@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_extension_instance">
+    <sys_extension_instance action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <order>999</order>
+        <point>x_376096_lfp_apps.LFPMetadataExt</point>
+        <script_include display_value="LFPMetadataExt">c0fd13d3c39e8210754fbfddd4013180</script_include>
+        <sys_class_name>sys_extension_instance</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-05-26 19:18:53</sys_created_on>
+        <sys_id>9cfd13d3c39e8210754fbfddd4013182</sys_id>
+        <sys_mod_count>1</sys_mod_count>
+        <sys_name>x_376096_lfp_apps.LFPMetadataExt</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_extension_instance_9cfd13d3c39e8210754fbfddd4013182</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-05-27 19:12:48</sys_updated_on>
+    </sys_extension_instance>
+</record_update>
