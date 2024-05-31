@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_376096_lfp_apps.AppLocalizationProcessor</api_name>
+        <caller_access/>
+        <client_callable>false</client_callable>
+        <description>Script that is used while processing or translating an artifact</description>
+        <name>AppLocalizationProcessor</name>
+        <script><![CDATA[ /* global gs, global, x_376096_lfp_apps */
+ /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
+/* eslint no-undef: "error" */
+var AppLocalizationProcessor = Class.create();
+AppLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProcessorSNC, {
+	initialize: function () {
+		global.LFArtifactProcessorSNC.prototype.initialize.apply(this, arguments);
+		const documentationProcessor = new x_376096_lfp_apps.TableLocalizationProcessor();
+		const metadataProcessor = new x_376096_lfp_apps.MetadataLocalizationProcessor();
+		this.metadataProcessor = metadataProcessor;
+		this.metadataHandlers = {
+			'sys_ui_section': this.processUISection,
+			'sys_db_object': processDocumentation
+		};
+
+		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(x => {
+			this.metadataHandlers[x] = processDocumentation;
+		});
+
+		function processDocumentation(builder, uiMessages, recordTable, recordSysID, params) {
+			const isTable = recordTable == 'sys_db_object';
+			const anyGr = new GlideRecord(isTable ? 'sys_db_object' : 'sys_dictionary');
+			anyGr.addQuery('sys_id', recordSysID);
+			if (!isTable) {
+				anyGr.addNotNullQuery('element'); // this is probably redundant with the collection-condition
+				anyGr.addQuery('internal_type', '!=', 'collection');
+				anyGr.addQuery('element', '!=', '');
+			}
+			anyGr.setLimit(1);
+			anyGr.query();
+			if (anyGr.next()) {
+				documentationProcessor.processDocumentation(builder, anyGr);
+			}
+		}
+	},
+
+    getTranslatableContent: function(params) { 
+		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
+
+		// All UI messages (script, html and annotations) are stored in a dedicated ContentBuilder.
+		// A separate builder is used for this so we can ensure uniqueness (otherwise the same UI message could
+		// appear multiple times on the translation screen)
+		const uiMessages = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
+
+        const recordGa = new GlideAggregate('sys_metadata');
+		recordGa.addQuery('sys_scope', params.sysId);
+		recordGa.groupBy('sys_class_name');
+		recordGa.orderBy('sys_class_name');
+		recordGa.query();
+		while (recordGa.next()) {
+			const recordTable = recordGa.getValue('sys_class_name');
+
+			// this adds translated_html, translated_text and translated_field
+			// Note: translated_html and translated_text are bound to the record (are)
+			// In contracst, translated_field is not and it might be likely,
+			// that an existing translation for a given field/value already exists (from a different scope)
+			builder.processTranslatableFieldsForMultipleRecords(recordTable, 'sys_scope=' + params.sysId, recordTable, params);
+
+			const ext = this.metadataProcessor._extForTable(recordTable);
+			if (ext) {
+				const metadataGr = new GlideRecord('sys_metadata');
+				metadataGr.addQuery('sys_class_name', recordTable);
+				metadataGr.addQuery('sys_scope', params.sysId);
+				metadataGr.query();
+
+				// using a custom (cached) translation-relevant fields lookup
+				// (script and html fields are not processed by processTranslatableFieldsForMultipleRecords)
+				const scriptFields = this.metadataProcessor._getScriptFields(recordTable);
+				const htmlFields = this.metadataProcessor._getHTMLFields(recordTable);
+				const fields = scriptFields.map(f => f.name).concat(htmlFields.map(f => f.name));
+				while (metadataGr.next()) {
+					const data = ext.getFieldValues(recordTable, metadataGr.getUniqueValue(), fields);
+					if (data) {
+						const self = this;
+						scriptFields.forEach(f => uiMessages.processScript(data[f.name], 'sys_ui_message', 'UI Message', params));
+						htmlFields.forEach(f => {
+							const messages = self._processHTML(data[f.name]);
+							uiMessages.processStringArray(messages, 'sys_ui_message', 'UI Message', params);
+						});
+					}
+
+					this.metadataHandlers[recordTable]?.call(this, builder, uiMessages, recordTable, metadataGr.getUniqueValue(), params);
+				}
+			} else {
+				gs.error('LF+ Scoped Apps: No Extension Point for handling "' + recordTable + '" found!');
+			}
+		}
+		
+		// remove duplicates from ui messages
+		const uiMessageKeys = {};
+		uiMessages.documentContent.content.forEach(element => {
+			element.element['fieldInfo'].forEach(field => {
+				const key = field.field['originalValue'];
+				if (key in uiMessageKeys) {
+					return;
+				}
+
+				uiMessageKeys[key] = field;
+			});
+		});
+
+		const uiMessageFields = Object.values(uiMessageKeys);
+		if (uiMessageFields.length) {
+			const element = global.LFDocumentContentHelper.createElement('sys_ui_message', 'UI Message');
+			element.setFields(uiMessageFields);
+			builder.processElement(element);
+		}
+		return builder.build();
+	},
+
+	processUISection: function (builder, uiMessages, uiSectionTable, uiSectionSysID, params) {
+		const annotationSysIDs = [];
+		const uiElementGr = new GlideRecord('sys_ui_element');
+		uiElementGr.addQuery('type', 'annotation');
+		uiElementGr.addQuery('sys_ui_section', uiSectionSysID);
+		uiElementGr.query();
+		while (uiElementGr.next()) {
+			annotationSysIDs.push(uiElementGr.getValue('element'));
+		}
+
+		const annotationGr = new GlideRecord('sys_ui_annotation');
+		annotationGr.addQuery('sys_id', 'IN', annotationSysIDs);			
+		annotationGr.query();
+		while (annotationGr.next()) {
+			const text = annotationGr.text.toString();
+			if (text.includes('${')) {
+				// annotation is taking care of the translations itself
+				uiMessages.processScript(text, 'sys_ui_message', 'UI Message', params);
+			} else {
+				const originalValue = uiMessages._getOriginalMessage(text);
+				const translatedValue = uiMessages._getTranslatedValueFromStandardTables(text);
+				const additionalParameters = {};
+				if (text != originalValue) {
+					additionalParameters['key'] = text;
+				}
+
+				const scope = uiMessages._getScope(params);
+				if (scope) {
+					additionalParameters['scope'] = scope;
+				}
+
+				const element = global.LFDocumentContentHelper.createElement('sys_ui_message', 'UI Message');
+				element.addField(
+					global.LFDocumentContentHelper
+						.createField(originalValue, translatedValue)
+						.setAdditionalParameters(additionalParameters)
+				);
+				uiMessages.processElement(element);
+			}
+		}
+	},
+
+	category: 'localization_framework',
+    type: 'AppLocalizationProcessor'
+});]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-05-31 19:12:03</sys_created_on>
+        <sys_id>350c4049c3e20210754fbfddd40131fb</sys_id>
+        <sys_mod_count>16</sys_mod_count>
+        <sys_name>AppLocalizationProcessor</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_script_include_350c4049c3e20210754fbfddd40131fb</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-05-31 19:30:31</sys_updated_on>
+    </sys_script_include>
+</record_update>

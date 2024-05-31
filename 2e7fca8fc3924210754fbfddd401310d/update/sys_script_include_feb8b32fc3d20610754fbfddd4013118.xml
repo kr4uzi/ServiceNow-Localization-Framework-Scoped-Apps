@@ -7,7 +7,7 @@
         <client_callable>false</client_callable>
         <description>Script that is used while processing or translating an artifact</description>
         <name>MetadataLocalizationProcessor</name>
-        <script><![CDATA[ /* global gs, global */
+        <script><![CDATA[ /* global gs, global, x_376096_lfp_apps */
  /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
 /* eslint no-undef: "error" */
 var MetadataLocalizationProcessor = Class.create();
@@ -25,6 +25,16 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		} else {
 			throw new Error(this.type + ' requires a "LFPMetadataExt" implementation');
 		}
+
+		this.documentationProcessor = new x_376096_lfp_apps.TableLocalizationProcessor();
+		this.metadataHandlers = {
+			'sys_ui_section': this._processUISection,
+			'sys_db_object': this._processDocumentation
+		};
+
+		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(x => {
+			this.metadataHandlers[x] = this._processDocumentation;
+		});
 	},
 	
 	showTranslateUIAction: function (recordGr) {
@@ -45,42 +55,127 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return false;
 	},
 
-	_getScriptFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type.startsWith('script'));
+    getTranslatableContent: function(params) {
+		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
+		const ext = this._extForTable(params.tableName);
+		if (ext) {
+			// Note: Not accessing the record's table is intentional to avoid creating cross scope privileges
+			const recordGr = new GlideRecord('sys_metadata');
+			recordGr.addQuery('sys_id', params.sysId);
+			recordGr.setLimit(1);
+			recordGr.query();
+			if (recordGr.next()) {
+				const displayValue = recordGr.getClassDisplayValue() + ': ' + (recordGr.getDisplayValue() || params.sysId);
+				const scope = recordGr.getValue('sys_scope');
+
+				const scriptFields = this._getScriptFields(params.tableName);
+				const htmlFields = this._getHTMLFields(params.tableName);
+				const fields = scriptFields.map(f => f.name)
+					.concat(htmlFields.map(f => f.name));
+
+				builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params) 
+				const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
+				if (data) {
+					scriptFields.forEach(f => builder.processScript(data[f.name], displayValue, f.label, params));
+					htmlFields.forEach(f => {
+						const messages = this._processHTML(data[f.name]);
+						builder.processStringArray(messages, displayValue, f.label, params);
+					});
+				}
+
+				this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params);
+			} else {
+				gs.error('LF+ Scoped Apps: No Extension Point for handling "' + params.tableName + '" found!');
+			}
+		}
+
+		const uiMessageKeys = new Set();
+		const result = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
+		builder.build().getElements().forEach(element => {
+			const fields = element.getFields().filter(field => {
+				const params = field.getAdditionalParameters() || {};
+				if (params.hasOwnProperty('type')) {
+					// if not a UI Message: remove empty fields
+					return !!field.getOriginalValue();
+				}
+
+				// remove duplicate UI messages
+				const key = params.key || field.getOriginalValue();
+				if (uiMessageKeys.has(key)) {
+					return false;
+				}
+				
+				uiMessageKeys.add(key);
+				return true;		
+			});
+
+			element.setFields(fields);
+			if (fields.length > 0) {
+				result.processElement(element);
+			}
+		});
+
+		return result.build();
 	},
 
-	_getHTMLFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type.startsWith('html'));
-	},
-	
-	_getTranslateableFields: function (table) {
-		const fields = [];
-		const dictionaryGr = new GlideRecord('sys_dictionary');
-		dictionaryGr.addQuery('name', 'IN', new GlideTableHierarchy(table).getTables());
-		dictionaryGr.addQuery('internal_type', 'documentation_field')
-			.addOrCondition('internal_type', 'translated_field')
-			.addOrCondition('internal_type', 'translated_html')
-			.addOrCondition('internal_type', 'translated_text')
-			.addOrCondition('internal_type', 'html_template')
-			.addOrCondition('internal_type', 'script')
-			.addOrCondition('internal_type', 'script_server')
-			.addOrCondition('internal_type', 'script_client')
-			.addOrCondition('internal_type', 'script_plain');
-		dictionaryGr.orderBy('name');
-		dictionaryGr.orderBy('element');
-		dictionaryGr.query();
-		while (dictionaryGr.next()) {
-			fields.push({
-				table: dictionaryGr.getValue('name'),
-				name: dictionaryGr.getValue('element'),
-				label: dictionaryGr.getDisplayValue('column_label'),
-				type: dictionaryGr.getValue('internal_type')
-			});
+	_processDocumentation: function (builder, metadataGr, group, params) {
+		const isTable = params.tableName == 'sys_db_object';
+		const anyGr = new GlideRecord(isTable ? 'sys_db_object' : 'sys_dictionary');
+		anyGr.addQuery('sys_id', metadataGr.getUniqueValue());
+		if (!isTable) {
+			anyGr.addNotNullQuery('element'); // this is probably redundant with the collection-condition
+			anyGr.addQuery('internal_type', '!=', 'collection');
+			anyGr.addQuery('element', '!=', '');
 		}
-		
-		return fields;
+		anyGr.setLimit(1);
+		anyGr.query();
+		if (anyGr.next()) {
+			this.documentationProcessor.processDocumentation(builder, anyGr);
+		}
 	},
-	
+
+	_processUISection: function (builder, metadataGr, group, params) {
+		const annotationSysIDs = [];
+		const uiElementGr = new GlideRecord('sys_ui_element');
+		uiElementGr.addQuery('type', 'annotation');
+		uiElementGr.addQuery('sys_ui_section', metadataGr.getUniqueValue());
+		uiElementGr.query();
+		while (uiElementGr.next()) {
+			annotationSysIDs.push(uiElementGr.getValue('element'));
+		}
+
+		const annotationGr = new GlideRecord('sys_ui_annotation');
+		annotationGr.addQuery('sys_id', 'IN', annotationSysIDs);			
+		annotationGr.query();
+		while (annotationGr.next()) {
+			const text = annotationGr.text.toString();
+			if (text.includes('${')) {
+				// annotation is taking care of the translations itself
+				builder.processScript(text, group, 'Annotation', params);
+			} else {
+				const originalValue = builder._getOriginalMessage(text);
+				const translatedValue = builder._getTranslatedValueFromStandardTables(text);
+				const additionalParameters = {};
+				if (text != originalValue) {
+					additionalParameters['key'] = text;
+				}
+
+				const scope = builder._getScope(params);
+				if (scope) {
+					additionalParameters['scope'] = scope;
+				}
+
+				const element = global.LFDocumentContentHelper.createElement(group, 'Annotation');
+				element.addField(
+					global.LFDocumentContentHelper
+						.createField(originalValue, translatedValue)
+						.setAdditionalParameters(additionalParameters)
+				);
+				builder.processElement(element);
+			}
+		}
+	},
+
 	_processHTML: function (html) {
 		// in-place translations via ${ MESSAGE {{DATA-BINDING}} } in 'Body HTML template'
 		let i = html.indexOf('${'); let count = 0;
@@ -113,138 +208,49 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return [...new Set(messages)];
 	},
 
+	_getScriptFields: function (table) {
+		return this._getTranslateableFields(table).filter(f => f.type.startsWith('script'));
+	},
+
+	_getHTMLFields: function (table) {
+		return this._getTranslateableFields(table).filter(f => f.type.startsWith('html'));
+	},
+
+	_getTranslatedFields: function (table) {
+		return this._getTranslateableFields(table).filter(f => f.type.startsWith('translated'));
+	},
+	
+	_getTranslateableFields: function (table) {
+		const fields = [];
+		const dictionaryGr = new GlideRecord('sys_dictionary');
+		dictionaryGr.addQuery('name', 'IN', new GlideTableHierarchy(table).getTables());
+		dictionaryGr.addQuery('internal_type', 'translated_field')
+			.addOrCondition('internal_type', 'translated_html')
+			.addOrCondition('internal_type', 'translated_text')
+			.addOrCondition('internal_type', 'html_template')
+			.addOrCondition('internal_type', 'script')
+			.addOrCondition('internal_type', 'script_server')
+			.addOrCondition('internal_type', 'script_client')
+			.addOrCondition('internal_type', 'script_plain');
+		dictionaryGr.orderBy('name');
+		dictionaryGr.orderBy('element');
+		dictionaryGr.query();
+		while (dictionaryGr.next()) {
+			fields.push({
+				table: dictionaryGr.getValue('name'),
+				name: dictionaryGr.getValue('element'),
+				label: dictionaryGr.getDisplayValue('column_label'),
+				type: dictionaryGr.getValue('internal_type')
+			});
+		}
+		
+		return fields;
+	},
+
 	_extForTable: function (table) {
 		for (let i = 0; i < this.extensionPoints.length; i++) {
 			if (this.extensionPoints[i].handlesTable(table)) {
 				return this.extensionPoints[i];
-			}
-		}
-	},
-
-    getTranslatableContent: function(params) {
-        const recordGa = new GlideAggregate('sys_metadata');
-		if (params.tableName == 'sys_app') {
-			params.scope = params.sysId;
-			//params.shouldHonourScope = true;
-			recordGa.addQuery('sys_scope', params.sysId);
-		}
-		else {
-			recordGa.addQuery('sys_id', params.sysId);
-
-			const recordGr = new GlideRecord('sys_metadata');
-			recordGr.addQuery('sys_id', params.sysId);
-			recordGr.setLimit(1);
-			recordGr.query();
-			if (recordGr.next()) {
-				params.scope = recordGr.getValue('sys_scope');
-			}
-		}
-
-		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
-		const uiMessages = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
-
-		recordGa.groupBy('sys_class_name');
-		recordGa.query();
-		while (recordGa.next()) {
-			const recordTable = recordGa.getValue('sys_class_name');
-			// Note: if this is a translation request for a single metadata-record, we add 'sys_id=' to the encoded query below
-			builder.processTranslatableFieldsForMultipleRecords(recordTable, 'sys_scope=' + params.scope + (params.tableName != 'sys_app' && ('^sys_id=' + params.sysId)), recordTable, params);
-
-			const ext = this._extForTable(recordTable);
-			if (ext) {
-				const metadataGr = new GlideRecord('sys_metadata');
-				metadataGr.addQuery('sys_class_name', recordTable);
-				metadataGr.addQuery('sys_scope', params.scope);
-				if (params.tableName != 'sys_app') {
-					// a non-sys_app-table identifies a record specific translation
-					metadataGr.addQuery('sys_id', params.sysId);
-					metadataGr.setLimit(1);
-				}
-				metadataGr.query();
-
-				const scriptFields = this._getScriptFields(recordTable);
-				const htmlFields = this._getHTMLFields(recordTable);
-				const fields = scriptFields.map(f => f.name).concat(htmlFields.map(f => f.name));
-				while (metadataGr.next()) {
-					const data = ext.getFieldValues(recordTable, metadataGr.getUniqueValue(), fields);
-					if (data) {
-						const self = this;
-						scriptFields.forEach(f => uiMessages.processScript(data[f.name], 'sys_ui_message', 'UI Message', params));
-						htmlFields.forEach(f => {
-							const messages = self._processHTML(data[f.name]);
-							uiMessages.processStringArray(messages, 'sys_ui_message', 'UI Message', params);
-						});
-					}
-
-					if (recordTable == 'sys_ui_section') {
-						translateAnnotations(builder, metadataGr.getUniqueValue(), params);
-					}
-				}
-			} else {
-				gs.error('LF+ Scoped Apps: No Extension Point for handling "' + recordTable + '" found!');
-			}
-		}
-		
-		// processTranslatableFieldsForMultipleRecords does not allow us to exclude fields which are never going to be translated
-		// we therefore remove empty fields so that we can reach for a 100% translation
-		const uiMessageKeys = {};
-		uiMessages.documentContent.content.forEach(element => {
-			element.element['fieldInfo'].forEach(field => {
-				const key = field.field['originalValue'];
-				if (key in uiMessageKeys) {
-					return;
-				}
-
-				uiMessageKeys[key] = field;
-			});
-		});
-		const uiMessageFields = Object.values(uiMessageKeys);
-		if (uiMessageFields.length) {
-			const element = global.LFDocumentContentHelper.createElement('sys_ui_message', 'UI Message');
-			element.setFields(uiMessageFields);
-			builder.processElement(element);
-		}
-		return builder.build();
-
-		function translateAnnotations(builder, uiSectionSysID, params) {
-			const annotationSysIDs = [];
-			const uiElementGr = new GlideRecord('sys_ui_element');
-			uiElementGr.addQuery('type', 'annotation');
-			uiElementGr.addQuery('sys_ui_section', uiSectionSysID);
-			uiElementGr.query();
-			while (uiElementGr.next()) {
-				annotationSysIDs.push(uiElementGr.getValue('element'));
-			}
-
-			const annotationGr = new GlideRecord('sys_ui_annotation');
-			annotationGr.addQuery('sys_id', 'IN', annotationSysIDs);			
-			annotationGr.query();
-			while (annotationGr.next()) {
-				const text = annotationGr.text.toString();
-				if (text.includes('${')) {
-					// annotation is taking care of the translations itself
-					builder.processScript(text, 'sys_ui_message', 'UI Message', params);
-				} else {
-					const originalValue = builder._getOriginalMessage(text);
-					const translatedValue = builder._getTranslatedValueFromStandardTables(text);
-					const additionalParameters = {};
-					if (text != originalValue) {
-						additionalParameters['key'] = text;
-					}
-
-					const scope = builder._getScope(params);
-					if (scope) {
-						additionalParameters['scope'] = scope;
-					}
-
-					const element = global.LFDocumentContentHelper.createElement('sys_ui_message', 'UI Message');
-					element.addField(
-						global.LFDocumentContentHelper
-							.createField(originalValue, translatedValue)
-							.setAdditionalParameters(additionalParameters)
-					);
-					builder.processElement(element);
-				}
 			}
 		}
 	},
@@ -256,13 +262,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>30</sys_mod_count>
+        <sys_mod_count>47</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-27 20:10:52</sys_updated_on>
+        <sys_updated_on>2024-05-31 21:00:44</sys_updated_on>
     </sys_script_include>
 </record_update>

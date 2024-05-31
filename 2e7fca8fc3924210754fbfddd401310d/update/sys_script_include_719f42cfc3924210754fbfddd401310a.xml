@@ -24,6 +24,65 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
 		}
 	},
 
+	processDocumentation: function (builder, anyGr) {
+		const translatedValues = {};
+		const isTable = anyGr.getTableName() == 'sys_db_object';
+		const docGr = new GlideRecord('sys_documentation');
+		docGr.addQuery('name', anyGr.getValue('name'));
+		docGr.addQuery('element', isTable ? '' : anyGr.getValue('element'));
+		docGr.addQuery('language', builder.sourceLanguage).addOrCondition('language', builder.targetLanguage);
+		docGr.setLimit(2);
+		docGr.query();
+		while (docGr.next()) {
+			var language = docGr.getValue('language');
+			translatedValues[language] = {
+				sys_id: docGr.getUniqueValue(),
+				label: docGr.getValue('label'),
+				plural: docGr.getValue('plural')
+			};
+
+			if (!isTable) {
+				// help and hint is only usefull for columns, not table labels
+				if (docGr.help) {
+					translatedValues[language].help = docGr.getValue('help');
+				}
+
+				if (docGr.hint) {
+					translatedValues[language].hint = docGr.getValue('hint');
+				}
+			}
+		}
+
+		const source = translatedValues[builder.sourceLanguage];
+		const target = translatedValues[builder.targetLanguage];
+
+		// Note: The group name is the technical name of the table / column
+		const group = isTable ? anyGr.getValue('name') : anyGr.getValue('element');
+		['label', 'plural', 'help', 'hint'].forEach(key => {
+			if (!(key in source)) {
+				// ignore help and hint if they are not set
+				return;
+			}
+
+			const additionalParameters = {
+				'sysId': source.sys_id,
+				'type': 'documentation_field',
+				'scope': anyGr.getValue('sys_scope'),
+				'name': key,
+				'table': 'sys_documentation'
+			};
+
+			const element = global.LFDocumentContentHelper.createElement(group, docGr.getElement(key).getLabel());
+			element.setFields([
+				global.LFDocumentContentHelper
+					.createField(source[key], (target && target[key]) || '')
+					.setAdditionalParameters(additionalParameters)
+					.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
+			]);
+			builder.processElement(element);
+		});
+	},
+
     getTranslatableContent: function(params) {
 		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);		
 		const dbObjectGr = new GlideRecord(params.tableName);
@@ -31,9 +90,7 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
 		dbObjectGr.setLimit(1);
 		dbObjectGr.query();
 		if (dbObjectGr.next()) {
-			const scope = dbObjectGr.getValue('sys_scope');
-			const tableName = dbObjectGr.getValue('name');
-			processDocumentation(builder, scope, dbObjectGr, tableName, '');
+			this.processDocumentation(builder, dbObjectGr);
 
 			const dictGr = new GlideRecord('sys_dictionary');
 			dictGr.addQuery('name', dbObjectGr.name);
@@ -41,71 +98,13 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
 			dictGr.query();
 			while (dictGr.next()) {
 				const column = dictGr.getValue('element');
-				if (column.startsWith('sys')) continue;
-
-				processDocumentation(builder, scope, dictGr, tableName, column);
+				if (column != 'sys_id') {
+					this.processDocumentation(builder, dictGr);
+				}
 			}
 		}
 		
 		return builder.build();
-
-		function processDocumentation(builder, scope, anyGr, table, field) {
-			const translatedValues = {};
-			const docGr = new GlideRecord('sys_documentation');
-			docGr.addQuery('name', table);
-			docGr.addQuery('element', field);
-			docGr.addQuery('language', builder.sourceLanguage).addOrCondition('language', builder.targetLanguage);
-			docGr.setLimit(2);
-			docGr.query();
-			while (docGr.next()) {
-				var language = docGr.getValue('language');
-				translatedValues[language] = {
-					sys_id: docGr.getUniqueValue(),
-					label: docGr.getValue('label'),
-					plural: docGr.getValue('plural')
-				};
-
-				if (field) {
-					// help and hint is only usefull for columns, not table labels
-					if (docGr.help) {
-						translatedValues[language].help = docGr.getValue('help');
-					}
-
-					if (docGr.hint) {
-						translatedValues[language].hint = docGr.getValue('hint');
-					}
-				}
-			}
-
-			const source = translatedValues[builder.sourceLanguage];
-			const target = translatedValues[builder.targetLanguage];
-
-			// Note: The group name is the technical name of the table / column
-			const group = anyGr.getTableName() == 'sys_db_object' ? anyGr.getValue('name') : anyGr.getValue('element');
-			['label', 'plural', 'help', 'hint'].forEach(key => {
-				if (!(key in source)) {
-					// ignore help and hint if they are not set
-					return;
-				}
-
-				const additionalParameters = {
-                    'sysId': source.sys_id,
-                    'type': 'documentation_field',
-					'scope': scope,
-                    'name': key,
-                    'table': 'sys_documentation'
-                };
-
-				const element = global.LFDocumentContentHelper.createElement(group, docGr.getElement(key).getLabel());
-				element.setFields([
-					global.LFDocumentContentHelper
-						.createField(source[key], (target && target[key]) || '')
-						.setAdditionalParameters(additionalParameters)
-						.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
-				]);
-				builder.processElement(element);
-			});
-		}
 	},
 
     saveTranslatedContent: function(documentContentObject) {
@@ -147,13 +146,13 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-25 21:54:18</sys_created_on>
         <sys_id>719f42cfc3924210754fbfddd401310a</sys_id>
-        <sys_mod_count>9</sys_mod_count>
+        <sys_mod_count>13</sys_mod_count>
         <sys_name>TableLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_719f42cfc3924210754fbfddd401310a</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-26 18:50:10</sys_updated_on>
+        <sys_updated_on>2024-05-31 19:11:19</sys_updated_on>
     </sys_script_include>
 </record_update>
