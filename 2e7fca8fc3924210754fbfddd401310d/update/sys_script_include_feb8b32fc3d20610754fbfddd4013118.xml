@@ -7,34 +7,111 @@
         <client_callable>false</client_callable>
         <description>Script that is used while processing or translating an artifact</description>
         <name>MetadataLocalizationProcessor</name>
-        <script><![CDATA[ /* global gs, global, x_376096_lfp_apps */
- /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
+        <script><![CDATA[/* global gs, global, x_376096_lfp_apps */
+/* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
 /* eslint no-undef: "error" */
 var MetadataLocalizationProcessor = Class.create();
 MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProcessorSNC, {
-	initialize: function () {
-		global.LFArtifactProcessorSNC.prototype.initialize.apply(this, arguments);
+	saveTranslatedContent: function (documentContentObject) {
+		global.LFArtifactProcessorSNC.prototype.saveTranslatedContent.apply(this, arguments);
 		
-		const extensionPoints = new GlideScriptedExtensionPoint().getExtensions('LFPMetadataExt');
-		if (extensionPoints.length) {
-			for (let i = 0; i < extensionPoints.length; i++) {
-				extensionPoints[i].initialize();
+		// the default save function is currently not handling sys_documentation fields at all...
+		// the script below is based on LFReadSaveScriptUtils::saveTranslationsInStandardTables
+		const targetLanguage = documentContentObject.getLanguage();
+        const version = documentContentObject.getVersion();
+        if (version == 'v1' && targetLanguage) {
+			const elements = documentContentObject.getElements();
+			const docFields = {};
+			const choiceFields = {};
+            for (let i = 0; i < elements.length; i++) {
+				const fields = elements[i].getFields();
+				for (let j = 0; j < fields.length; j++) {
+					const field = fields[j];
+					const fieldParams = field.getAdditionalParameters() || {};
+					if (fieldParams.type == 'documentation_field' && fieldParams.sysId && fieldParams.name) {
+						const docField = docFields[fieldParams.sysId] || (docFields[fieldParams.sysId] = {});
+						docField[fieldParams.name] = field.getTranslatedValue();
+					} else if (fieldParams.type == 'choice' && fieldParams.sysId
+						&& fieldParams.hasOwnProperty('dependent') && fieldParams.value
+						&& fieldParams.hasOwnProperty('field')) {
+						choiceFields[fieldParams.sysId] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value][fieldParams.field] = field.getTranslatedValue();
+					}
+				}
+            }
+
+			const updateSetManager = new global.LFUpdateSetManager(this.publishMode, this.updateSetSuffix);
+			const docGr = new GlideRecord('sys_documentation');
+			docGr.addQuery('sys_id', 'IN', Object.keys(docFields));
+			docGr.query();
+			while (docGr.next()) {
+				updateSetManager.switchToUpdateSetInScope(docGr.getValue('sys_scope'));
+				this.docExt.createOrUpdateDocumention(docGr.getValue('name'), docGr.getValue('element'), targetLanguage, docFields[docGr.getUniqueValue()]);
+				updateSetManager.switchToPreviousUpdateSet();
 			}
 
-			this.extensionPoints = extensionPoints;
+			for (const choiceSetSysID in choiceFields) {
+				const choiceSetGr = new GlideRecord('sys_choice_set');
+				choiceSetGr.addQuery('sys_id', choiceSetSysID);
+				choiceSetGr.setLimit(1);
+				choiceSetGr.query();
+				if (choiceSetGr.next()) {
+					const table = choiceSetGr.getValue('name');
+					const element = choiceSetGr.getValue('element');
+					updateSetManager.switchToUpdateSetInScope(choiceSetGr.getValue('sys_scope'));
+					for (const dependentValue in choiceFields[choiceSetSysID]) {
+						for (const value in choiceFields[choiceSetSysID][dependentValue]) {
+							this.choiceExt.createOrUpdateChoice(table, element, dependentValue, value, targetLanguage, choiceFields[choiceSetSysID][dependentValue][value]);
+						}
+					}
+					updateSetManager.switchToPreviousUpdateSet();
+				}
+			}
+        }
+	},
+
+	initialize: function () {try {
+		global.LFArtifactProcessorSNC.prototype.initialize.apply(this, arguments);
+		
+		const metadataExts = new GlideScriptedExtensionPoint().getExtensions('LFPMetadataExt');
+		if (metadataExts.length) {
+			for (let i = 0; i < metadataExts.length; i++) {
+				metadataExts[i].initialize();
+			}
+
+			this.metadataExts = metadataExts;
 		} else {
 			throw new Error(this.type + ' requires a "LFPMetadataExt" implementation');
+		}
+
+		const docExts = new GlideScriptedExtensionPoint().getExtensions('LFPDocumentationExt');
+		if (docExts.length) {
+			docExts[0].initialize();
+			this.docExt = docExts[0];
+		} else {
+			throw new Error(this.type + ' requires a "LFPDocumentationExt" implementation');
+		}
+
+		const choiceExts = new GlideScriptedExtensionPoint().getExtensions('LFPChoiceExt');
+		if (choiceExts.length) {
+			choiceExts[0].initialize();
+			this.choiceExt = choiceExts[0];
+		} else {
+			throw new Error(this.type + ' requires a "LFPChoiceExt" implementation');
 		}
 
 		this.documentationProcessor = new x_376096_lfp_apps.TableLocalizationProcessor();
 		this.metadataHandlers = {
 			'sys_ui_section': this._processUISection,
-			'sys_db_object': this._processDocumentation
+			'sys_db_object': this._processDocumentation,
+			'sys_choice_set': this._processChoiceSet
 		};
 
 		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(x => {
 			this.metadataHandlers[x] = this._processDocumentation;
-		});
+		}); } catch (e) { gs.error("MKR init: " + e + "\n " + e.stack); }
 	},
 	
 	showTranslateUIAction: function (recordGr) {
@@ -55,9 +132,9 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return false;
 	},
 
-    getTranslatableContent: function(params) {
+    getTranslatableContent: function(params) {try {
 		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
-		const ext = this._extForTable(params.tableName);
+		const ext = this._metadataExtForTable(params.tableName);
 		if (ext) {
 			// Note: Not accessing the record's table is intentional to avoid creating cross scope privileges
 			const recordGr = new GlideRecord('sys_metadata');
@@ -73,7 +150,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 				const fields = scriptFields.map(f => f.name)
 					.concat(htmlFields.map(f => f.name));
 
-				builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params) 
+				builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params);
 				const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
 				if (data) {
 					scriptFields.forEach(f => builder.processScript(data[f.name], displayValue, f.label, params));
@@ -115,7 +192,104 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			}
 		});
 
-		return result.build();
+		return result.build(); } catch (e) { gs.error("meta: " + e + "\n" + e.stack); }
+	},
+
+	_processChoiceSet: function (builder, metadataGr, group, params) {
+		const choiceSetGr = new GlideRecord('sys_choice_set');
+		choiceSetGr.addQuery('sys_id', metadataGr.getUniqueValue());
+		choiceSetGr.setLimit(1);
+		choiceSetGr.query();
+		if (choiceSetGr.next()) {
+			const table = choiceSetGr.getValue('name');
+			const element = choiceSetGr.getValue('element');
+
+			getDependentValues(table, element, [builder.sourceLanguage, builder.targetLanguage]).forEach(dependent => {
+				const choiceGr = new GlideRecord('sys_choice');
+				choiceGr.addQuery('name', table);
+				choiceGr.addQuery('element', element);
+				choiceGr.addQuery('inactive', false);
+				choiceGr.addQuery('dependent_value', dependent);
+				choiceGr.addQuery('language', builder.sourceLanguage)
+					.addOrCondition('language', builder.targetLanguage);
+				choiceGr.query();
+
+				const choices = {};
+				while (choiceGr.next()) {
+					const value = choiceGr.value.toString();
+					choices[value] ??= {};
+					choices[value][choiceGr.language.toString()] = {
+						label: choiceGr.label.toString(),
+						hint: choiceGr.hint.toString()
+					};
+				}
+
+				for (const value in choices) {
+					const labelParams = {
+						'sysId': choiceSetGr.getUniqueValue(),
+						'type': 'choice',
+						'dependent': dependent,
+						'field': 'label',
+						'value': value
+					};
+
+					const source = choices[value][builder.sourceLanguage];
+					const target = choices[value][builder.targetLanguage];
+					let elementGroup = `${choiceGr.getClassDisplayValue()}: ${value}`;
+					if (dependent) {
+						elementGroup += `[${dependent}]`;
+					}
+					elementGroup += ` (${table}.${element})`;
+
+					builder.processElement(
+						global.LFDocumentContentHelper.createElement(elementGroup, 'Label')
+						.addField(global.LFDocumentContentHelper
+							.createField(source.label, target?.label || '')
+							.setAdditionalParameters(labelParams)
+							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
+						)
+					);
+
+					if (source.hint) {
+						const hintParams = JSON.parse(JSON.stringify(labelParams));
+						hintParams.field = 'hint';
+
+						element.addField(global.LFDocumentContentHelper
+							.createField(source.hint, target?.hint || '')
+							.setAdditionalParameters(hintParams)
+							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE));
+
+						builder.processElement(
+						global.LFDocumentContentHelper.createElement(elementGroup, 'Hint')
+						.addField(global.LFDocumentContentHelper
+							.createField(source.label, target?.label || '')
+							.setAdditionalParameters(labelParams)
+							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
+						)
+					);
+					}
+				}
+			});
+		}
+
+		function getDependentValues(table, field, languages) {
+			const choiceGa = new GlideAggregate('sys_choice');
+			choiceGa.addQuery('name', table);
+			choiceGa.addQuery('element', field);
+			choiceGa.addQuery('inactive', false);
+			const qc = choiceGa.addQuery('language', languages[0]);
+			languages.forEach(l => qc.addOrCondition('language', l));
+			
+			choiceGa.groupBy('dependent_value');
+			choiceGa.query();
+
+			const dependendValues = [];
+			while (choiceGa.next()) {
+				dependendValues.push(choiceGa.getValue('dependent_value'));
+			}
+
+			return dependendValues;
+		}
 	},
 
 	_processDocumentation: function (builder, metadataGr, group, params) {
@@ -247,10 +421,10 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return fields;
 	},
 
-	_extForTable: function (table) {
-		for (let i = 0; i < this.extensionPoints.length; i++) {
-			if (this.extensionPoints[i].handlesTable(table)) {
-				return this.extensionPoints[i];
+	_metadataExtForTable: function (table) {
+		for (let i = 0; i < this.metadataExts.length; i++) {
+			if (this.metadataExts[i].handlesTable(table)) {
+				return this.metadataExts[i];
 			}
 		}
 	},
@@ -262,13 +436,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>47</sys_mod_count>
+        <sys_mod_count>89</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-31 21:00:44</sys_updated_on>
+        <sys_updated_on>2024-06-02 00:13:11</sys_updated_on>
     </sys_script_include>
 </record_update>

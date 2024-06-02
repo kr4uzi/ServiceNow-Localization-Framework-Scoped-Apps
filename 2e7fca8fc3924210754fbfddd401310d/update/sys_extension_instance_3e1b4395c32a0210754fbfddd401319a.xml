@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_extension_instance">
+    <sys_extension_instance action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <order>999</order>
+        <point>x_376096_lfp_apps.LFPChoiceExt</point>
+        <script_include display_value="LFPChoiceExt">3e1b4395c32a0210754fbfddd4013196</script_include>
+        <sys_class_name>sys_extension_instance</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-06-01 23:04:26</sys_created_on>
+        <sys_id>3e1b4395c32a0210754fbfddd401319a</sys_id>
+        <sys_mod_count>1</sys_mod_count>
+        <sys_name>x_376096_lfp_apps.LFPChoiceExt</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_extension_instance_3e1b4395c32a0210754fbfddd401319a</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-06-02 00:39:39</sys_updated_on>
+    </sys_extension_instance>
+</record_update>

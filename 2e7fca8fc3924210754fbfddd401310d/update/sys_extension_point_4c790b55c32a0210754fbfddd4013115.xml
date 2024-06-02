@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_extension_point">
+    <sys_extension_point action="INSERT_OR_UPDATE">
+        <api_name>x_376096_lfp_apps.LFPChoiceExt</api_name>
+        <description/>
+        <example><![CDATA[/* global gs */
+/* global Class, GlideRecord */
+/* eslint no-undef: "error" */
+var LFPChoiceExt = Class.create();
+LFPChoiceExt.prototype = {
+	initialize: function() {
+
+	},
+
+	createOrUpdateChoice: function (table, element, dependentValue, value, language, valueMap) {
+		var currentScopeName = gs.getCurrentScopeName();
+		var isGlobalScope = currentScopeName == 'global' || currentScopeName == 'rhino.global';
+		if (isGlobalScope) {
+			var choiceGr = new GlideRecord('sys_choice');
+			choiceGr.addQuery('name', table);
+			choiceGr.addQuery('element', element);
+			choiceGr.addQuery('dependent_value', dependentValue);
+			choiceGr.addQuery('value', value);
+			choiceGr.addQuery('language', language);
+			choiceGr.setLimit(1);
+			choiceGr.query();
+
+			var fields = Object.keys(valueMap);
+			if (fields.length == 0 || fields.every(function (f) { return !valueMap[f]; })) {
+				if (choiceGr.next()) {
+					choiceGr.deleteRecord();
+				}
+			} else {
+				if (!choiceGr.next()) {
+					choiceGr.newRecord();
+					choiceGr.setValue('name', table);
+					choiceGr.setValue('element', element);
+					choiceGr.setValue('dependent_value', dependentValue);
+					choiceGr.setValue('value', value);
+					choiceGr.setValue('language', language);
+				}
+
+				['label', 'hint', 'sequence']
+					.filter(function (attr) { return valueMap.hasOwnProperty(attr); })
+					.forEach(function (attr) { choiceGr.setValue(attr, valueMap[attr]); });
+					
+				if (choiceGr.isNewRecord()) {
+					choiceGr.setValue('sequence', getChoiceSequence(table, element, dependentValue, value));
+					choiceGr.insert();
+				} else {
+					choiceGr.update();
+				}
+			}
+		} else {
+			throw new Error('Global Scope implementation required');
+		}
+
+		function getChoiceSequence(table, element, dependentValue, value) {
+			var choiceGr = new GlideRecord('sys_choice');
+			choiceGr.addQuery('name', table);
+			choiceGr.addQuery('element', element);
+			choiceGr.addQuery('dependent_value', dependentValue);
+			choiceGr.addQuery('value', value);
+			choiceGr.addNotNullQuery('sequence');
+			choiceGr.setLimit(1);
+			choiceGr.query();
+			if (choiceGr.next()) {
+				return choiceGr.sequence.toString();
+			}
+		}
+	},
+
+    type: 'LFPChoiceExt'
+};]]></example>
+        <name>LFPChoiceExt</name>
+        <restrict_scope>false</restrict_scope>
+        <sys_class_name>sys_extension_point</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-06-01 23:02:29</sys_created_on>
+        <sys_id>4c790b55c32a0210754fbfddd4013115</sys_id>
+        <sys_mod_count>4</sys_mod_count>
+        <sys_name>LFPChoiceExt</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_extension_point_4c790b55c32a0210754fbfddd4013115</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-06-02 00:39:23</sys_updated_on>
+    </sys_extension_point>
+</record_update>

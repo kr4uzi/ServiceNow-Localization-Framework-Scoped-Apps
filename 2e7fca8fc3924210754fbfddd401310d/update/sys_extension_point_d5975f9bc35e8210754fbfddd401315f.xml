@@ -2,7 +2,8 @@
     <sys_extension_point action="INSERT_OR_UPDATE">
         <api_name>x_376096_lfp_apps.LFPMetadataExt</api_name>
         <description/>
-        <example><![CDATA[/* global Class, GlideRecord, gs */
+        <example><![CDATA[/* global gs */
+/* global Class, GlideRecord */
 /* eslint no-undef: "error" */
 var LFPMetadataExt = Class.create();
 LFPMetadataExt.prototype = {
@@ -42,13 +43,13 @@ LFPMetadataExt.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-26 19:18:48</sys_created_on>
         <sys_id>d5975f9bc35e8210754fbfddd401315f</sys_id>
-        <sys_mod_count>4</sys_mod_count>
+        <sys_mod_count>5</sys_mod_count>
         <sys_name>LFPMetadataExt</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_extension_point_d5975f9bc35e8210754fbfddd401315f</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-27 19:50:42</sys_updated_on>
+        <sys_updated_on>2024-06-01 23:02:49</sys_updated_on>
     </sys_extension_point>
 </record_update>
