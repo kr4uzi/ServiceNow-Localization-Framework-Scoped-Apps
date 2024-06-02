@@ -12,67 +12,7 @@
 /* eslint no-undef: "error" */
 var MetadataLocalizationProcessor = Class.create();
 MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProcessorSNC, {
-	saveTranslatedContent: function (documentContentObject) {
-		global.LFArtifactProcessorSNC.prototype.saveTranslatedContent.apply(this, arguments);
-		
-		// the default save function is currently not handling sys_documentation fields at all...
-		// the script below is based on LFReadSaveScriptUtils::saveTranslationsInStandardTables
-		const targetLanguage = documentContentObject.getLanguage();
-        const version = documentContentObject.getVersion();
-        if (version == 'v1' && targetLanguage) {
-			const elements = documentContentObject.getElements();
-			const docFields = {};
-			const choiceFields = {};
-            for (let i = 0; i < elements.length; i++) {
-				const fields = elements[i].getFields();
-				for (let j = 0; j < fields.length; j++) {
-					const field = fields[j];
-					const fieldParams = field.getAdditionalParameters() || {};
-					if (fieldParams.type == 'documentation_field' && fieldParams.sysId && fieldParams.name) {
-						const docField = docFields[fieldParams.sysId] || (docFields[fieldParams.sysId] = {});
-						docField[fieldParams.name] = field.getTranslatedValue();
-					} else if (fieldParams.type == 'choice' && fieldParams.sysId
-						&& fieldParams.hasOwnProperty('dependent') && fieldParams.value
-						&& fieldParams.hasOwnProperty('field')) {
-						choiceFields[fieldParams.sysId] ??= {};
-						choiceFields[fieldParams.sysId][fieldParams.dependent] ??= {};
-						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value] ??= {};
-						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value][fieldParams.field] = field.getTranslatedValue();
-					}
-				}
-            }
-
-			const updateSetManager = new global.LFUpdateSetManager(this.publishMode, this.updateSetSuffix);
-			const docGr = new GlideRecord('sys_documentation');
-			docGr.addQuery('sys_id', 'IN', Object.keys(docFields));
-			docGr.query();
-			while (docGr.next()) {
-				updateSetManager.switchToUpdateSetInScope(docGr.getValue('sys_scope'));
-				this.docExt.createOrUpdateDocumention(docGr.getValue('name'), docGr.getValue('element'), targetLanguage, docFields[docGr.getUniqueValue()]);
-				updateSetManager.switchToPreviousUpdateSet();
-			}
-
-			for (const choiceSetSysID in choiceFields) {
-				const choiceSetGr = new GlideRecord('sys_choice_set');
-				choiceSetGr.addQuery('sys_id', choiceSetSysID);
-				choiceSetGr.setLimit(1);
-				choiceSetGr.query();
-				if (choiceSetGr.next()) {
-					const table = choiceSetGr.getValue('name');
-					const element = choiceSetGr.getValue('element');
-					updateSetManager.switchToUpdateSetInScope(choiceSetGr.getValue('sys_scope'));
-					for (const dependentValue in choiceFields[choiceSetSysID]) {
-						for (const value in choiceFields[choiceSetSysID][dependentValue]) {
-							this.choiceExt.createOrUpdateChoice(table, element, dependentValue, value, targetLanguage, choiceFields[choiceSetSysID][dependentValue][value]);
-						}
-					}
-					updateSetManager.switchToPreviousUpdateSet();
-				}
-			}
-        }
-	},
-
-	initialize: function () {try {
+	initialize: function () {
 		global.LFArtifactProcessorSNC.prototype.initialize.apply(this, arguments);
 		
 		const metadataExts = new GlideScriptedExtensionPoint().getExtensions('LFPMetadataExt');
@@ -102,16 +42,18 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			throw new Error(this.type + ' requires a "LFPChoiceExt" implementation');
 		}
 
-		this.documentationProcessor = new x_376096_lfp_apps.TableLocalizationProcessor();
+		// tables with labels (documentation_field) need to be treated differently from all other translated fields
+		// as they depend on the whole record (in contrast every other tranlated field depends on the 
+		// record and field)
 		this.metadataHandlers = {
 			'sys_ui_section': this._processUISection,
-			'sys_db_object': this._processDocumentation,
-			'sys_choice_set': this._processChoiceSet
+			'sys_choice_set': this._processChoiceSet,
+			'sys_db_object': this._processDocumentation
 		};
 
-		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(x => {
-			this.metadataHandlers[x] = this._processDocumentation;
-		}); } catch (e) { gs.error("MKR init: " + e + "\n " + e.stack); }
+		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(dictTable => {
+			this.metadataHandlers[dictTable] = this._processDocumentation;
+		});
 	},
 	
 	showTranslateUIAction: function (recordGr) {
@@ -195,6 +137,135 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return result.build(); } catch (e) { gs.error("meta: " + e + "\n" + e.stack); }
 	},
 
+	saveTranslatedContent: function (documentContentObject) {
+		global.LFArtifactProcessorSNC.prototype.saveTranslatedContent.apply(this, arguments);
+		
+		// the default save function is currently not handling sys_documentation fields at all...
+		// the script below is based on LFReadSaveScriptUtils::saveTranslationsInStandardTables
+		const targetLanguage = documentContentObject.getLanguage();
+        const version = documentContentObject.getVersion();
+        if (version == 'v1' && targetLanguage) {
+			const elements = documentContentObject.getElements();
+			const docFields = {};
+			const choiceFields = {};
+            for (let i = 0; i < elements.length; i++) {
+				const fields = elements[i].getFields();
+				for (let j = 0; j < fields.length; j++) {
+					const field = fields[j];
+					const fieldParams = field.getAdditionalParameters() || {};
+					if (fieldParams.type == 'documentation_field' && fieldParams.sysId && fieldParams.element) {
+						docFields[fieldParams.sysId] ??= {};
+						docFields[fieldParams.sysId][fieldParams.element] = field.getTranslatedValue();
+					} else if (fieldParams.type == 'choice' && fieldParams.sysId
+						&& fieldParams.hasOwnProperty('dependent') && fieldParams.value
+						&& fieldParams.hasOwnProperty('field')) {
+						choiceFields[fieldParams.sysId] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value] ??= {};
+						choiceFields[fieldParams.sysId][fieldParams.dependent][fieldParams.value][fieldParams.field] = field.getTranslatedValue();
+					}
+				}
+            }
+
+			const updateSetManager = new global.LFUpdateSetManager(this.publishMode, this.updateSetSuffix);
+			const docGr = new GlideRecord('sys_documentation');
+			docGr.addQuery('sys_id', 'IN', Object.keys(docFields));
+			docGr.query();
+			while (docGr.next()) {
+				updateSetManager.switchToUpdateSetInScope(docGr.getValue('sys_scope'));
+				this.docExt.createOrUpdateDocumention(docGr.getValue('name'), docGr.getValue('element'), targetLanguage, docFields[docGr.getUniqueValue()]);
+				updateSetManager.switchToPreviousUpdateSet();
+			}
+
+			for (const choiceSetSysID in choiceFields) {
+				const choiceSetGr = new GlideRecord('sys_choice_set');
+				choiceSetGr.addQuery('sys_id', choiceSetSysID);
+				choiceSetGr.setLimit(1);
+				choiceSetGr.query();
+				if (choiceSetGr.next()) {
+					const table = choiceSetGr.getValue('name');
+					const element = choiceSetGr.getValue('element');
+					updateSetManager.switchToUpdateSetInScope(choiceSetGr.getValue('sys_scope'));
+					for (const dependentValue in choiceFields[choiceSetSysID]) {
+						for (const value in choiceFields[choiceSetSysID][dependentValue]) {
+							this.choiceExt.createOrUpdateChoice(table, element, dependentValue, value, targetLanguage, choiceFields[choiceSetSysID][dependentValue][value]);
+						}
+					}
+					updateSetManager.switchToPreviousUpdateSet();
+				}
+			}
+        }
+	},
+
+	_processDocumentation: function (builder, metadataGr, group, params) {
+		// isTable condition is based on 'sys_db_object' as it has no extending tables (sys_dictionary has!)
+		const isTable = metadataGr.getRecordClassName() == 'sys_db_object';
+		const recordGr = new GlideRecord(isTable ? 'sys_db_object' : 'sys_dictionary');
+		recordGr.addQuery('sys_id', metadataGr.sys_id);
+		recordGr.setLimit(1);
+		recordGr.query();
+		if (recordGr.next()) {
+			const optionalFields = ['help', 'hint', 'url', 'url_target'];
+			const fields = ['label', 'plural'].concat(optionalFields);
+			const translatedValues = {};
+			const docGr = new GlideRecord('sys_documentation');
+			docGr.addQuery('name', recordGr.getValue('name'));
+			docGr.addQuery('element', recordGr.getValue('element'));
+			docGr.addQuery('language', builder.sourceLanguage)
+				.addOrCondition('language', builder.targetLanguage);
+			docGr.setLimit(2);
+			docGr.query();
+			while (docGr.next()) {
+				const language = docGr.getValue('language');
+				translatedValues[language] = {
+					sys_id: docGr.getUniqueValue(),
+					label: docGr.getValue('label'),
+					plural: docGr.getValue('plural')
+				};
+
+				optionalFields.forEach(field => {
+					const fieldValue = docGr.getValue(field);
+					if (fieldValue) {
+						translatedValues[language][field] = fieldValue;
+					}
+				});
+			}
+
+			const source = translatedValues[builder.sourceLanguage];
+			const target = translatedValues[builder.targetLanguage];
+
+			// For custom tables, the sys-columns are created without a sys_name (display column for sys_metadata).
+			// For these columns, the group name (which is based on the metadata's display value) is thereforce incorrect.
+			let elementName = `${recordGr.getClassDisplayValue()}: ${recordGr.getDisplayValue()} (${recordGr.name}`;
+			if (recordGr.element) {
+				elementName += `.${recordGr.element}`;
+			}
+			elementName += ')';
+
+			fields.forEach(field => {
+				if (!source.hasOwnProperty(field)) {
+					// ignore fields (e.g. url and url_target) if they are not present
+					return;
+				}
+
+				const additionalParameters = {
+					'sysId': source.sys_id,
+					'type': 'documentation_field',
+					'element': field
+				};
+				
+				builder.processElement(
+					global.LFDocumentContentHelper.createElement(elementName, docGr.getElement(field).getLabel())
+					.addField(global.LFDocumentContentHelper
+						.createField(source[field], (target && target[field]) || '')
+						.setAdditionalParameters(additionalParameters)
+						.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
+					)
+				);
+			});
+		}
+	},
+
 	_processChoiceSet: function (builder, metadataGr, group, params) {
 		const choiceSetGr = new GlideRecord('sys_choice_set');
 		choiceSetGr.addQuery('sys_id', metadataGr.getUniqueValue());
@@ -235,11 +306,12 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 
 					const source = choices[value][builder.sourceLanguage];
 					const target = choices[value][builder.targetLanguage];
-					let elementGroup = `${choiceGr.getClassDisplayValue()}: ${value}`;
+					// because every choice has a label and an additional hint, we need to create separate groups for each
+					let elementGroup = `${group} (${value}`;
 					if (dependent) {
 						elementGroup += `[${dependent}]`;
 					}
-					elementGroup += ` (${table}.${element})`;
+					elementGroup += `)`;
 
 					builder.processElement(
 						global.LFDocumentContentHelper.createElement(elementGroup, 'Label')
@@ -260,13 +332,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE));
 
 						builder.processElement(
-						global.LFDocumentContentHelper.createElement(elementGroup, 'Hint')
-						.addField(global.LFDocumentContentHelper
-							.createField(source.label, target?.label || '')
-							.setAdditionalParameters(labelParams)
-							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
-						)
-					);
+							global.LFDocumentContentHelper.createElement(elementGroup, 'Hint')
+							.addField(global.LFDocumentContentHelper
+								.createField(source.label, target?.label || '')
+								.setAdditionalParameters(labelParams)
+								.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
+							)
+						);
 					}
 				}
 			});
@@ -289,22 +361,6 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			}
 
 			return dependendValues;
-		}
-	},
-
-	_processDocumentation: function (builder, metadataGr, group, params) {
-		const isTable = params.tableName == 'sys_db_object';
-		const anyGr = new GlideRecord(isTable ? 'sys_db_object' : 'sys_dictionary');
-		anyGr.addQuery('sys_id', metadataGr.getUniqueValue());
-		if (!isTable) {
-			anyGr.addNotNullQuery('element'); // this is probably redundant with the collection-condition
-			anyGr.addQuery('internal_type', '!=', 'collection');
-			anyGr.addQuery('element', '!=', '');
-		}
-		anyGr.setLimit(1);
-		anyGr.query();
-		if (anyGr.next()) {
-			this.documentationProcessor.processDocumentation(builder, anyGr);
 		}
 	},
 
@@ -351,16 +407,12 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 	},
 
 	_processHTML: function (html) {
-		// in-place translations via ${ MESSAGE {{DATA-BINDING}} } in 'Body HTML template'
-		let i = html.indexOf('${'); let count = 0;
+		// in-place translations for ${ MESSAGE {{DATA-BINDING}} } html 
+		let i = html.indexOf('${');
 		let pcount = 0;
 		let start = 0;
 		const messages = [];
 		while (i < html.length && i != -1) {
-			if (count++ > html.length) {
-				return null;
-			}
-
 			if (html[i] == '$' && html[i + 1] == '{' && (++pcount == 1)) {
 				// beginning of message
 				// Note: This won't throw if (i + 1) is out of bounds
@@ -436,13 +488,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>89</sys_mod_count>
+        <sys_mod_count>95</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-02 00:13:11</sys_updated_on>
+        <sys_updated_on>2024-06-02 11:20:12</sys_updated_on>
     </sys_script_include>
 </record_update>
