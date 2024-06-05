@@ -74,7 +74,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		return false;
 	},
 
-    getTranslatableContent: function(params) {try {
+    getTranslatableContent: function(params) {
 		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
 		const ext = this._metadataExtForTable(params.tableName);
 		if (ext) {
@@ -89,8 +89,12 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 
 				const scriptFields = this._getScriptFields(params.tableName);
 				const htmlFields = this._getHTMLFields(params.tableName);
+				const translatedJSONFields = this._getTranslatedJSONFields(params.tableName);
+				const uxFields = this._getUXFields(params.tableName);
 				const fields = scriptFields.map(f => f.name)
-					.concat(htmlFields.map(f => f.name));
+					.concat(htmlFields.map(f => f.name))
+					.concat(translatedJSONFields.map(f => f.name))
+					.concat(uxFields.map(f => f.name));
 
 				builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params);
 				const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
@@ -100,6 +104,19 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 						const messages = this._processHTML(data[f.name]);
 						builder.processStringArray(messages, displayValue, f.label, params);
 					});
+					translatedJSONFields.forEach(f => {
+						try {
+							const messages = new Set();
+							JSON.parse(data[f.name]).forEach(jsonField => {
+								if (jsonField.message) messages.add(jsonField.message);
+								if (jsonField.comment) messages.add(jsonField.comment);
+							});
+							builder.processStringArray([...messages], displayValue, f.label, params);
+						} catch (e) {
+
+						}
+					});
+					uxFields.forEach(f => this._processUX(builder, data[f.name], displayValue, f.label, params));
 				}
 
 				this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params);
@@ -134,7 +151,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			}
 		});
 
-		return result.build(); } catch (e) { gs.error("meta: " + e + "\n" + e.stack); }
+		return result.build();
 	},
 
 	saveTranslatedContent: function (documentContentObject) {
@@ -364,6 +381,34 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		}
 	},
 
+	_processUX: function (builder, value, group, label, params) {
+		try {
+			const messages = new Set();
+			parseObj(messages, JSON.parse(JSON.stringify(JSON.parse(value), null, 2)));
+			builder.processStringArray(messages, group, label, params);
+		} catch (e) {
+
+		}
+
+		function parseObj(keys, obj) {
+			if (obj && typeof obj == 'object') {
+				if (obj instanceof Array) {
+					obj.forEach(element => parseObj(keys, element));
+				} else if (obj.hasOwnProperty('type') && obj.hasOwnProperty('value')) {
+					if (obj['type'] == 'TRANSLATION_LITERAL') {
+						const value = obj['value'];
+						if (value.message) keys.add(value.message);
+						if (value.comment) keys.add(value.comment);
+					}
+				} else {
+					for (let key in obj) {
+						parseObj(keys, obj[key]);
+					}
+				}
+			}
+		}
+	},
+
 	_processUISection: function (builder, metadataGr, group, params) {
 		const annotationSysIDs = [];
 		const uiElementGr = new GlideRecord('sys_ui_element');
@@ -445,19 +490,33 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 	_getTranslatedFields: function (table) {
 		return this._getTranslateableFields(table).filter(f => f.type.startsWith('translated'));
 	},
+
+	_getTranslatedJSONFields: function (table) {
+		return this._getTranslateableFields(table).filter(f => f.type == 'json_translations');
+	},
+
+	_getUXFields: function (table) {
+		return this._getTranslateableFields(table).filter(f => f.type == 'json');
+	},
 	
 	_getTranslateableFields: function (table) {
 		const fields = [];
 		const dictionaryGr = new GlideRecord('sys_dictionary');
 		dictionaryGr.addQuery('name', 'IN', new GlideTableHierarchy(table).getTables());
-		dictionaryGr.addQuery('internal_type', 'translated_field')
+		var qc = dictionaryGr.addQuery('internal_type', 'translated_field')
 			.addOrCondition('internal_type', 'translated_html')
 			.addOrCondition('internal_type', 'translated_text')
 			.addOrCondition('internal_type', 'html_template')
+			.addOrCondition('internal_type', 'json_translations')
 			.addOrCondition('internal_type', 'script')
 			.addOrCondition('internal_type', 'script_server')
 			.addOrCondition('internal_type', 'script_client')
 			.addOrCondition('internal_type', 'script_plain');
+			
+		if (table.startsWith('sys_ux')) {
+			qc.addOrCondition('internal_type', 'json');
+		}
+
 		dictionaryGr.orderBy('name');
 		dictionaryGr.orderBy('element');
 		dictionaryGr.query();
@@ -488,13 +547,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>95</sys_mod_count>
+        <sys_mod_count>109</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-02 11:20:12</sys_updated_on>
+        <sys_updated_on>2024-06-05 12:22:37</sys_updated_on>
     </sys_script_include>
 </record_update>
