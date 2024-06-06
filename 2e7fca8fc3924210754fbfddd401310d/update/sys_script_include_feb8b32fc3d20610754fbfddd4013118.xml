@@ -14,6 +14,7 @@ var MetadataLocalizationProcessor = Class.create();
 MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProcessorSNC, {
 	initialize: function () {
 		global.LFArtifactProcessorSNC.prototype.initialize.apply(this, arguments);
+		this._fieldCache = {};
 		
 		const metadataExts = new GlideScriptedExtensionPoint().getExtensions('LFPMetadataExt');
 		if (metadataExts.length) {
@@ -103,6 +104,8 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			.concat(translatedJSONFields.map(f => f.name))
 			.concat(uxFields.map(f => f.name));
 
+		// Note: Not using processTranslatableFieldsForSingleRecord because this requires that we 
+		// lookup the record using its actual table (which would create lots of cross scope privilege records for this app)
 		builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params);
 		const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
 		if (data) {
@@ -116,6 +119,8 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 					const messages = new Set();
 					JSON.parse(data[f.name]).forEach(jsonField => {
 						if (jsonField.message) messages.add(jsonField.message);
+						// is the comment like a "hint" (hover) text?
+						// or does it provide context for the translator?
 						if (jsonField.comment) messages.add(jsonField.comment);
 					});
 					builder.processStringArray([...messages], displayValue, f.label, params);
@@ -553,6 +558,10 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 	},
 	
 	_getTranslateableFields: function (table) {
+		if (table in this._fieldCache) {
+			return this._fieldCache[table];
+		}
+
 		const fields = [];
 		const dictionaryGr = new GlideRecord('sys_dictionary');
 		dictionaryGr.addQuery('name', 'IN', new GlideTableHierarchy(table).getTables());
@@ -565,8 +574,12 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			.addOrCondition('internal_type', 'script_server')
 			.addOrCondition('internal_type', 'script_client')
 			.addOrCondition('internal_type', 'script_plain');
-			
+		
+		// afaik all translations for UI Builder tables are stored in a json_translations table
+		// however it doesn't really hurt if the json fields are parsed
+		// (any duplicate key will be removed by the build-step)
 		if (table.startsWith('sys_ux')) {
+			// only UI Builder tables use this field type?
 			qc.addOrCondition('internal_type', 'json');
 		}
 
@@ -582,6 +595,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			});
 		}
 		
+		this._fieldCache[table] = fields;
 		return fields;
 	},
 
@@ -600,13 +614,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>125</sys_mod_count>
+        <sys_mod_count>129</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-06 16:54:42</sys_updated_on>
+        <sys_updated_on>2024-06-06 18:40:39</sys_updated_on>
     </sys_script_include>
 </record_update>

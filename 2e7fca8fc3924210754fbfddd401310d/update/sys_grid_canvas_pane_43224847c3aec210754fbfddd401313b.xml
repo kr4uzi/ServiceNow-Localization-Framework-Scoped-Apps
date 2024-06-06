@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_grid_canvas_pane">
+    <sys_grid_canvas_pane action="INSERT_OR_UPDATE">
+        <grid_canvas display_value="Apps">83224847c3aec210754fbfddd4013138</grid_canvas>
+        <height>15</height>
+        <portal_widget display_value="Created 2024-06-06 20:14:04">0e98733ac36ec210754fbfddd4013149</portal_widget>
+        <posx>0</posx>
+        <posy>0</posy>
+        <sys_class_name>sys_grid_canvas_pane</sys_class_name>
+        <sys_created_by>markus.kraus</sys_created_by>
+        <sys_created_on>2024-06-06 18:55:56</sys_created_on>
+        <sys_id>43224847c3aec210754fbfddd401313b</sys_id>
+        <sys_mod_count>8</sys_mod_count>
+        <sys_name>83224847c3aec210754fbfddd4013138</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_grid_canvas_pane_43224847c3aec210754fbfddd401313b</sys_update_name>
+        <sys_updated_by>markus.kraus</sys_updated_by>
+        <sys_updated_on>2024-06-06 19:06:27</sys_updated_on>
+        <width>8</width>
+    </sys_grid_canvas_pane>
+</record_update>
