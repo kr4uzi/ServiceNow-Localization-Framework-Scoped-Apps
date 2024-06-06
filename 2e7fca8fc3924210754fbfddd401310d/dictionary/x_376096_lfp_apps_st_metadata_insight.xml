@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element db_object_id="60c6480fc3aec210754fbfddd4013192" label="Metadata Insight" max_length="40" name="x_376096_lfp_apps_st_metadata_insight" type="collection">
+        <element attributes="readonly_clickthrough=true" label="Record" max_length="32" name="record" reference="sys_metadata" type="reference"/>
+        <element label="Translations" max_length="40" name="translations" type="integer"/>
+        <element label="Class" max_length="80" name="sys_class_name" type="table_name"/>
+        <index name="index">
+            <element name="record"/>
+        </index>
+    </element>
+</database>
