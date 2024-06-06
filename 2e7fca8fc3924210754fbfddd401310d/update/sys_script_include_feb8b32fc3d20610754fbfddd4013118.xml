@@ -77,53 +77,56 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
     getTranslatableContent: function(params) {
 		const builder = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
 		const ext = this._metadataExtForTable(params.tableName);
-		if (ext) {
-			// Note: Not accessing the record's table is intentional to avoid creating cross scope privileges
-			const recordGr = new GlideRecord('sys_metadata');
-			recordGr.addQuery('sys_id', params.sysId);
-			recordGr.setLimit(1);
-			recordGr.query();
-			if (recordGr.next()) {
-				const displayValue = recordGr.getClassDisplayValue() + ': ' + (recordGr.getDisplayValue() || params.sysId);
-				const scope = recordGr.getValue('sys_scope');
-
-				const scriptFields = this._getScriptFields(params.tableName);
-				const htmlFields = this._getHTMLFields(params.tableName);
-				const translatedJSONFields = this._getTranslatedJSONFields(params.tableName);
-				const uxFields = this._getUXFields(params.tableName);
-				const fields = scriptFields.map(f => f.name)
-					.concat(htmlFields.map(f => f.name))
-					.concat(translatedJSONFields.map(f => f.name))
-					.concat(uxFields.map(f => f.name));
-
-				builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params);
-				const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
-				if (data) {
-					scriptFields.forEach(f => builder.processScript(data[f.name], displayValue, f.label, params));
-					htmlFields.forEach(f => {
-						const messages = this._processHTML(data[f.name]);
-						builder.processStringArray(messages, displayValue, f.label, params);
-					});
-					translatedJSONFields.forEach(f => {
-						try {
-							const messages = new Set();
-							JSON.parse(data[f.name]).forEach(jsonField => {
-								if (jsonField.message) messages.add(jsonField.message);
-								if (jsonField.comment) messages.add(jsonField.comment);
-							});
-							builder.processStringArray([...messages], displayValue, f.label, params);
-						} catch (e) {
-
-						}
-					});
-					uxFields.forEach(f => this._processUX(builder, data[f.name], displayValue, f.label, params));
-				}
-
-				this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params);
-			} else {
-				gs.error('LF+ Scoped Apps: No Extension Point for handling "' + params.tableName + '" found!');
-			}
+		if (!ext) {
+			gs.error('LF+ Scoped Apps: No Extension Point for handling "' + params.tableName + '" found!');
+			return builder.build();
 		}
+
+		// Note: Not accessing the record's table is intentional to avoid creating cross scope privileges
+		const recordGr = new GlideRecord('sys_metadata');
+		recordGr.addQuery('sys_id', params.sysId);
+		recordGr.setLimit(1);
+		recordGr.query();
+		if (!recordGr.next()) {
+			return builder.build();
+		}
+
+		const displayValue = recordGr.getClassDisplayValue() + ': ' + (recordGr.getDisplayValue() || params.sysId);
+		const scope = recordGr.getValue('sys_scope');
+
+		const scriptFields = this._getScriptFields(params.tableName);
+		const htmlFields = this._getHTMLFields(params.tableName);
+		const translatedJSONFields = this._getTranslatedJSONFields(params.tableName);
+		const uxFields = this._getUXFields(params.tableName);
+		const fields = scriptFields.map(f => f.name)
+			.concat(htmlFields.map(f => f.name))
+			.concat(translatedJSONFields.map(f => f.name))
+			.concat(uxFields.map(f => f.name));
+
+		builder.processTranslatableFieldsForMultipleRecords(params.tableName, 'sys_id=' + params.sysId, displayValue, params);
+		const data = ext.getFieldValues(params.tableName, recordGr.getUniqueValue(), fields);
+		if (data) {
+			scriptFields.forEach(f => builder.processScript(data[f.name], displayValue, f.label, params));
+			htmlFields.forEach(f => {
+				const messages = this._processHTML(data[f.name]);
+				builder.processStringArray(messages, displayValue, f.label, params);
+			});
+			translatedJSONFields.forEach(f => {
+				try {
+					const messages = new Set();
+					JSON.parse(data[f.name]).forEach(jsonField => {
+						if (jsonField.message) messages.add(jsonField.message);
+						if (jsonField.comment) messages.add(jsonField.comment);
+					});
+					builder.processStringArray([...messages], displayValue, f.label, params);
+				} catch (e) {
+
+				}
+			});
+			uxFields.forEach(f => this._processUX(builder, data[f.name], displayValue, f.label, params));
+		}
+
+		this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params);
 
 		const uiMessageKeys = new Set();
 		const result = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
@@ -151,7 +154,57 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			}
 		});
 
+		// cross_scope_handler UI Script will show cross scope violations
+		this._checkCrossScopeViolations(builder, scope);
+
 		return result.build();
+	},
+
+	_checkCrossScopeViolations: function (builder, expectedScope) {
+		builder.build().getElements().forEach(element => {
+			element.getFields().forEach(field => {
+				const originalValue = field.getOriginalValue();
+				const params = field.getAdditionalParameters() || {};
+
+				// Note: translated_text and translated_html are not checked as those fields are
+				// bound directly to the record and therefore cannot cause a cross scope violation
+				if (params.type == 'translated_field') {
+					const translatedGr = new GlideRecord('sys_translated');
+					translatedGr.addQuery('name', params.table);
+					translatedGr.addQuery('element', params.name);
+					translatedGr.addQuery('value', originalValue);
+					translatedGr.addQuery('language', builder.targetLanguage);
+					translatedGr.setLimit(1);
+					translatedGr.query();
+					params.lfp_apps_cross_scope_violated = translatedGr.next() && translatedGr.getValue('sys_scope') != expectedScope && translatedGr.getDisplayValue('sys_scope');
+				} else if (params.type == 'choice') {
+					const choiceSetGr = new GlideRecord('sys_choice_set');
+					choiceSetGr.addQuery('sys_id', params.sysId);
+					choiceSetGr.setLimit(1);
+					choiceSetGr.query();
+					params.lfp_apps_cross_scope_violated = choiceSetGr.next() && choiceSetGr.getValue('sys_scope') != expectedScope && choiceSetGr.getDisplayValue('sys_scope');
+				} else if (params.type == 'documentation_field') {
+					const sourceDocGr = new GlideRecord('sys_documentation');
+					sourceDocGr.addQuery('sys_id', params.sysId);
+					sourceDocGr.setLimit(1);
+					sourceDocGr.query();
+					if (sourceDocGr.next()) {
+						const targetDocGr = new GlideRecord('sys_documentation');
+						targetDocGr.addQuery('name', sourceDocGr.name);
+						targetDocGr.addQuery('element', sourceDocGr.element);
+						targetDocGr.addQuery('language', builder.targetLanguage);
+						targetDocGr.setLimit(1);
+						params.lfp_apps_cross_scope_violated = targetDocGr.next() && targetDocGr.getValue('sys_scope') != expectedScope && targetDocGr.getDisplayValue('sys_scope');	
+					}
+				} else if (!params.type) {
+					const uiMessageGr = new GlideRecord('sys_ui_message');
+					uiMessageGr.addQuery('key', params.key || originalValue);
+					uiMessageGr.setLimit(1);
+					uiMessageGr.query();
+					params.lfp_apps_cross_scope_violated = uiMessageGr.next() && uiMessageGr.getValue('sys_scope') != expectedScope && uiMessageGr.getDisplayValue('sys_scope');
+				}
+			});
+		});
 	},
 
 	saveTranslatedContent: function (documentContentObject) {
@@ -547,13 +600,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>109</sys_mod_count>
+        <sys_mod_count>125</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-05 12:22:37</sys_updated_on>
+        <sys_updated_on>2024-06-06 16:54:42</sys_updated_on>
     </sys_script_include>
 </record_update>
