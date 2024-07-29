@@ -5,9 +5,21 @@
         <api_name>x_376096_lfp_apps.MetadataLocalizationProcessor</api_name>
         <caller_access/>
         <client_callable>false</client_callable>
-        <description>Script that is used while processing or translating an artifact</description>
+        <description>Script that is used while translating and saving any ServiceNow Metadata Record (=Application File). Some field-types are supported by the ootb Localization Framework (LF) implementation. If a translation for those fields is requested, this Script Include does a simple passthrough.&#13;
+&#13;
+The following field types are handled by this script include:&#13;
+- Documentation (sys_documentation): used for Table and Column Labels&#13;
+- Translated {Text|HTML} (sys_translated_text): translations which are bound to a specific record - implemented via passthrough&#13;
+- Translated Field (sys_translated): translations with system-wide effect (table + field specific) - implemented via passthrough&#13;
+- HTML Template (html_template): used e.g. in Service Portal Widgets with inline translations like ${message_key}&#13;
+- Translated JSON (json_translations): used in UI Builder Workspaces (those fields contain actually only a list of sys_ui_message keys)&#13;
+&#13;
+In addition, there are several records which are Application Files themselves but are composed of non-Application File records:&#13;
+- UI Sections: Section Captions and Annotations&#13;
+- Choice Set: Choices (with dependent value)&#13;
+- Tables and Columns: The label for tables doesn't actually reside on table/column record and needs special handling</description>
         <name>MetadataLocalizationProcessor</name>
-        <script><![CDATA[/* global gs, global, x_376096_lfp_apps */
+        <script><![CDATA[/* global gs, global, sn_scoped_cache, x_376096_lfp_apps */
 /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
 /* eslint no-undef: "error" */
 var MetadataLocalizationProcessor = Class.create();
@@ -54,24 +66,54 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		new GlideTableHierarchy('sys_dictionary').getAllExtensions().forEach(dictTable => {
 			this.metadataHandlers[dictTable] = this._processDocumentation;
 		});
+
+		// the 'Additional options, JSON format' (widget_parameters) has type script_server,
+		// but can contain inline translations
+		new GlideTableHierarchy('sp_instance').getAllExtensions().forEach(dictTable => {
+			this.metadataHandlers[dictTable] = this._processWidgetInstance;
+		});
 	},
 	
 	showTranslateUIAction: function (recordGr) {
 		const recordTable = recordGr.getRecordClassName();
 		if (new global.LFUtils().showUIAction('lfp_apps_metadata')
-			&& this._getTranslateableFields(recordTable).length > 0) {
-			const uiActionGr = new GlideRecord('sys_ui_action');
-			uiActionGr.addQuery('sys_id', '!=', '08d5d8ffc3560610754fbfddd4013158');
-			uiActionGr.addQuery('active', true);
-			uiActionGr.addQuery('name', 'Edit Translations');
-			uiActionGr.addQuery('table', 'IN', new GlideTableHierarchy(recordTable).getTables());
-			uiActionGr.setLimit(1);
-			uiActionGr.query();
+			/*&& (this._getTranslatableFields(recordTable).length > 0 || recordTable == 'sys_choice_set')*/) {
 			// only show the translate ui action if no other 'Edit Translations' UI Action exists for the record's table
-			return !uiActionGr.hasNext();
+			if (!checkUIActionExists(recordTable, 'Edit Translations')) {
+				return hasTranslatableContent.call(this, recordGr);
+			}
 		}
 		
 		return false;
+
+		function checkUIActionExists(recordTable, uiActionName) {
+			const metadataEditTranslationsUIAction = '08d5d8ffc3560610754fbfddd4013158';
+			const uiActionGr = new GlideRecord('sys_ui_action');
+			uiActionGr.addQuery('sys_id', '!=', metadataEditTranslationsUIAction);
+			uiActionGr.addQuery('active', true);
+			uiActionGr.addQuery('name', uiActionName);
+			uiActionGr.addQuery('table', 'IN', new GlideTableHierarchy(recordTable).getTables());
+			uiActionGr.setLimit(1);
+			uiActionGr.query();
+			return uiActionGr.hasNext();
+		}
+
+		function hasTranslatableContent(anyGr) {
+			const params = {
+				language: 'en',
+				sourceLanguage: 'en',
+				tableName: anyGr.getRecordClassName(),
+				sysId: anyGr.getUniqueValue()
+			};
+
+			try {
+				return this.getTranslatableContent(params).getElements().length > 0;
+			} catch (e) {
+				gs.error('[LF+ Scoped Apps] Failed to parse file: ' + anyGr.getRecordClassName() + '/' + anyGr.getUniqueValue() + '\n' + e.stack);
+			}
+
+			return false;
+		}
 	},
 
     getTranslatableContent: function(params) {
@@ -92,7 +134,6 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		}
 
 		const displayValue = recordGr.getClassDisplayValue() + ': ' + (recordGr.getDisplayValue() || params.sysId);
-		const scope = recordGr.getValue('sys_scope');
 
 		const scriptFields = this._getScriptFields(params.tableName);
 		const htmlFields = this._getHTMLFields(params.tableName);
@@ -116,7 +157,6 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 					const messages = new Set();
 					JSON.parse(data[f.name]).forEach(jsonField => {
 						if (jsonField.message) messages.add(jsonField.message);
-						if (jsonField.comment) messages.add(jsonField.comment);
 					});
 					builder.processStringArray([...messages], displayValue, f.label, params);
 				} catch (e) {
@@ -126,7 +166,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			uxFields.forEach(f => this._processUX(builder, data[f.name], displayValue, f.label, params));
 		}
 
-		this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params);
+		this.metadataHandlers[params.tableName]?.call(this, builder, recordGr, displayValue, params, data);
 
 		const uiMessageKeys = new Set();
 		const result = new global.LFDocumentContentBuilder('v1', params.language, params.sysId, params.tableName, params);
@@ -155,7 +195,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		});
 
 		// cross_scope_handler UI Script will show cross scope violations
-		this._checkCrossScopeViolations(builder, scope);
+		this._checkCrossScopeViolations(builder, recordGr.getValue('sys_scope'));
 
 		return result.build();
 	},
@@ -176,14 +216,14 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 					translatedGr.addQuery('language', builder.targetLanguage);
 					translatedGr.setLimit(1);
 					translatedGr.query();
-					params.lfp_apps_cross_scope_violated = translatedGr.next() && translatedGr.getValue('sys_scope') != expectedScope && translatedGr.getDisplayValue('sys_scope');
-				} else if (params.type == 'choice') {
+					params.lfp_apps_cross_scope_violated = translatedGr.next() && translatedGr.getValue('sys_scope') != expectedScope && (translatedGr.getDisplayValue('sys_scope') || '(empty scope)');
+				} else if (params.type == 'lfp_choice') {
 					const choiceSetGr = new GlideRecord('sys_choice_set');
 					choiceSetGr.addQuery('sys_id', params.sysId);
 					choiceSetGr.setLimit(1);
 					choiceSetGr.query();
-					params.lfp_apps_cross_scope_violated = choiceSetGr.next() && choiceSetGr.getValue('sys_scope') != expectedScope && choiceSetGr.getDisplayValue('sys_scope');
-				} else if (params.type == 'documentation_field') {
+					params.lfp_apps_cross_scope_violated = choiceSetGr.next() && choiceSetGr.getValue('sys_scope') != expectedScope && (choiceSetGr.getDisplayValue('sys_scope') || '(empty scope)');
+				} else if (params.type == 'lfp_documentation_field') {
 					const sourceDocGr = new GlideRecord('sys_documentation');
 					sourceDocGr.addQuery('sys_id', params.sysId);
 					sourceDocGr.setLimit(1);
@@ -194,15 +234,17 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 						targetDocGr.addQuery('element', sourceDocGr.element);
 						targetDocGr.addQuery('language', builder.targetLanguage);
 						targetDocGr.setLimit(1);
-						params.lfp_apps_cross_scope_violated = targetDocGr.next() && targetDocGr.getValue('sys_scope') != expectedScope && targetDocGr.getDisplayValue('sys_scope');	
+						params.lfp_apps_cross_scope_violated = targetDocGr.next() && targetDocGr.getValue('sys_scope') != expectedScope && (targetDocGr.getDisplayValue('sys_scope') || '(empty scope)');	
 					}
 				} else if (!params.type) {
 					const uiMessageGr = new GlideRecord('sys_ui_message');
 					uiMessageGr.addQuery('key', params.key || originalValue);
 					uiMessageGr.setLimit(1);
 					uiMessageGr.query();
-					params.lfp_apps_cross_scope_violated = uiMessageGr.next() && uiMessageGr.getValue('sys_scope') != expectedScope && uiMessageGr.getDisplayValue('sys_scope');
+					params.lfp_apps_cross_scope_violated = uiMessageGr.next() && uiMessageGr.getValue('sys_scope') != expectedScope && (uiMessageGr.getDisplayValue('sys_scope') || '(empty scope)');
 				}
+
+				field.setAdditionalParameters(params);
 			});
 		});
 	},
@@ -223,10 +265,10 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 				for (let j = 0; j < fields.length; j++) {
 					const field = fields[j];
 					const fieldParams = field.getAdditionalParameters() || {};
-					if (fieldParams.type == 'documentation_field' && fieldParams.sysId && fieldParams.element) {
+					if (fieldParams.type == 'lfp_documentation_field' && fieldParams.sysId && fieldParams.element) {
 						docFields[fieldParams.sysId] ??= {};
 						docFields[fieldParams.sysId][fieldParams.element] = field.getTranslatedValue();
-					} else if (fieldParams.type == 'choice' && fieldParams.sysId
+					} else if (fieldParams.type == 'lfp_choice' && fieldParams.sysId
 						&& fieldParams.hasOwnProperty('dependent') && fieldParams.value
 						&& fieldParams.hasOwnProperty('field')) {
 						choiceFields[fieldParams.sysId] ??= {};
@@ -267,7 +309,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         }
 	},
 
-	_processDocumentation: function (builder, metadataGr, group, params) {
+	_processDocumentation: function (builder, metadataGr, group, params, data) {
 		// isTable condition is based on 'sys_db_object' as it has no extending tables (sys_dictionary has!)
 		const isTable = metadataGr.getRecordClassName() == 'sys_db_object';
 		const recordGr = new GlideRecord(isTable ? 'sys_db_object' : 'sys_dictionary');
@@ -320,7 +362,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 
 				const additionalParameters = {
 					'sysId': source.sys_id,
-					'type': 'documentation_field',
+					'type': 'lfp_documentation_field',
 					'element': field
 				};
 				
@@ -336,7 +378,9 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		}
 	},
 
-	_processChoiceSet: function (builder, metadataGr, group, params) {
+	_processChoiceSet: function (builder, metadataGr, group, params, data) {
+		// TOOD: We need special handling for "javascript:" values here
+		// e.g. several NULL_OVERRIDE values make use of this
 		const choiceSetGr = new GlideRecord('sys_choice_set');
 		choiceSetGr.addQuery('sys_id', metadataGr.getUniqueValue());
 		choiceSetGr.setLimit(1);
@@ -357,7 +401,8 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 
 				const choices = {};
 				while (choiceGr.next()) {
-					const value = choiceGr.value.toString();
+					// Note: values need to be treated case-insensitive
+					const value = choiceGr.value.toString().toLowerCase();
 					choices[value] ??= {};
 					choices[value][choiceGr.language.toString()] = {
 						label: choiceGr.label.toString(),
@@ -368,13 +413,18 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 				for (const value in choices) {
 					const labelParams = {
 						'sysId': choiceSetGr.getUniqueValue(),
-						'type': 'choice',
+						'type': 'lfp_choice',
 						'dependent': dependent,
 						'field': 'label',
 						'value': value
 					};
 
 					const source = choices[value][builder.sourceLanguage];
+					if (!source) {
+						gs.error(`[LF+ Scoped Apps] The value '${value}' is not available in ${builder.sourceLanguage} - this is typically caused by an inconsistent implementation`);
+						continue;
+					}
+
 					const target = choices[value][builder.targetLanguage];
 					// because every choice has a label and an additional hint, we need to create separate groups for each
 					let elementGroup = `${group} (${value}`;
@@ -396,16 +446,11 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 						const hintParams = JSON.parse(JSON.stringify(labelParams));
 						hintParams.field = 'hint';
 
-						element.addField(global.LFDocumentContentHelper
-							.createField(source.hint, target?.hint || '')
-							.setAdditionalParameters(hintParams)
-							.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE));
-
 						builder.processElement(
 							global.LFDocumentContentHelper.createElement(elementGroup, 'Hint')
 							.addField(global.LFDocumentContentHelper
-								.createField(source.label, target?.label || '')
-								.setAdditionalParameters(labelParams)
+								.createField(source.hint, target?.hint || '')
+								.setAdditionalParameters(hintParams)
 								.setTextType(global.LFDocumentContentHelper.PLAIN_TEXT_TYPE)
 							)
 						);
@@ -420,7 +465,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			choiceGa.addQuery('element', field);
 			choiceGa.addQuery('inactive', false);
 			const qc = choiceGa.addQuery('language', languages[0]);
-			languages.forEach(l => qc.addOrCondition('language', l));
+			languages.slice(1).forEach(l => qc.addOrCondition('language', l));
 			
 			choiceGa.groupBy('dependent_value');
 			choiceGa.query();
@@ -451,7 +496,6 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 					if (obj['type'] == 'TRANSLATION_LITERAL') {
 						const value = obj['value'];
 						if (value.message) keys.add(value.message);
-						if (value.comment) keys.add(value.comment);
 					}
 				} else {
 					for (let key in obj) {
@@ -462,7 +506,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		}
 	},
 
-	_processUISection: function (builder, metadataGr, group, params) {
+	_processUISection: function (builder, metadataGr, group, params, data) {
 		const annotationSysIDs = [];
 		const uiElementGr = new GlideRecord('sys_ui_element');
 		uiElementGr.addQuery('type', 'annotation');
@@ -504,7 +548,20 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		}
 	},
 
+	_processWidgetInstance: function (builder, metadataGr, group, params, data) {
+		// widget_parameters are of type server_script and as such should already be contained in data
+		// they do not contain a script however, instead a json with inline html
+		const messages = this._processHTML(data?.widget_parameters);
+		if (messages.length) {
+			const fields = this._getTranslatableFields(params.tableName);
+			const label = fields.find(f => f.name == 'widget_parameters')?.label || 'Additional options, JSON format';
+			builder.processStringArray(messages, group, label, params);
+		}
+	},
+
 	_processHTML: function (html) {
+		html = html || '';
+
 		// in-place translations for ${ MESSAGE {{DATA-BINDING}} } html 
 		let i = html.indexOf('${');
 		let pcount = 0;
@@ -533,26 +590,35 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 	},
 
 	_getScriptFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type.startsWith('script'));
+		return this._getTranslatableFields(table).filter(f => f.type.startsWith('script'));
 	},
 
 	_getHTMLFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type.startsWith('html'));
+		return this._getTranslatableFields(table).filter(f => f.type.startsWith('html'));
 	},
 
 	_getTranslatedFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type.startsWith('translated'));
+		return this._getTranslatableFields(table).filter(f => f.type.startsWith('translated'));
 	},
 
 	_getTranslatedJSONFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type == 'json_translations');
+		return this._getTranslatableFields(table).filter(f => f.type == 'json_translations');
 	},
 
 	_getUXFields: function (table) {
-		return this._getTranslateableFields(table).filter(f => f.type == 'json');
+		return this._getTranslatableFields(table).filter(f => f.type == 'json');
 	},
 	
-	_getTranslateableFields: function (table) {
+	/**
+	 * @param {string} table
+	 * @return {{table: string, name: string, label: string, type: string}[]}
+	 */
+	_getTranslatableFields: function (table) {
+		const jsonFields = sn_scoped_cache.ScopedCacheManager.get('lfp_translatable_fields', table);
+		if (jsonFields) {
+			return JSON.parse(jsonFields);
+		}
+
 		const fields = [];
 		const dictionaryGr = new GlideRecord('sys_dictionary');
 		dictionaryGr.addQuery('name', 'IN', new GlideTableHierarchy(table).getTables());
@@ -582,6 +648,7 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			});
 		}
 		
+		sn_scoped_cache.ScopedCacheManager.put('lfp_translatable_fields', table, JSON.stringify(fields));
 		return fields;
 	},
 
@@ -600,13 +667,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>125</sys_mod_count>
+        <sys_mod_count>156</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-06 16:54:42</sys_updated_on>
+        <sys_updated_on>2024-07-29 21:53:50</sys_updated_on>
     </sys_script_include>
 </record_update>

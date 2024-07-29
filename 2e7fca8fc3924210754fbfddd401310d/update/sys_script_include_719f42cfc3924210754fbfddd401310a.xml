@@ -5,7 +5,7 @@
         <api_name>x_376096_lfp_apps.TableLocalizationProcessor</api_name>
         <caller_access/>
         <client_callable>false</client_callable>
-        <description/>
+        <description>The TableLocalizationProcessor is a convenience wrapper of the MetadataLocalizationProcessor which collects all fields and choices of the given tables for a single translation run.</description>
         <name>TableLocalizationProcessor</name>
         <script><![CDATA[/* global gs, global, x_376096_lfp_apps */
 /* global Class, GlideRecord, GlideTableHierarchy */
@@ -41,14 +41,29 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
 		
 		return builder.build();
 
-		function processDocumentation(metadataProcessor, builder, anyGr, params) {
+		function processDocumentation(metadataProcessor, builder, dictGr, params) {
 			const metadataParams = JSON.parse(JSON.stringify(params));
-			metadataParams.scope = anyGr.getValue('sys_scope');
-			metadataParams.sysId = anyGr.getUniqueValue();
-			metadataParams.tableName = anyGr.getValue('sys_class_name');
+			metadataParams.scope = dictGr.getValue('sys_scope');
+			metadataParams.sysId = dictGr.getUniqueValue();
+			metadataParams.tableName = dictGr.getRecordClassName();
 
 			const content = metadataProcessor.getTranslatableContent(metadataParams);
 			content.getElements().forEach(element => builder.processElement(element));
+
+			const choiceSetGr = new GlideRecord('sys_choice_set');
+			choiceSetGr.addQuery('name', dictGr.getValue('name'));
+			choiceSetGr.addQuery('element', dictGr.getValue('element'));
+			choiceSetGr.setLimit(1);
+			choiceSetGr.query();
+			if (choiceSetGr.next()) {
+				const choiceParams = JSON.parse(JSON.stringify(params));
+				choiceParams.scope = choiceSetGr.getValue('sys_scope');
+				choiceParams.sysId = choiceSetGr.getUniqueValue();
+				choiceParams.tableName = choiceSetGr.getRecordClassName();
+
+				const content = metadataProcessor.getTranslatableContent(choiceParams);
+				content.getElements().forEach(element => builder.processElement(element));
+			}
 		}
 	},
 
@@ -63,13 +78,13 @@ TableLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactPro
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-25 21:54:18</sys_created_on>
         <sys_id>719f42cfc3924210754fbfddd401310a</sys_id>
-        <sys_mod_count>25</sys_mod_count>
+        <sys_mod_count>30</sys_mod_count>
         <sys_name>TableLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_719f42cfc3924210754fbfddd401310a</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-02 11:09:23</sys_updated_on>
+        <sys_updated_on>2024-07-29 19:43:02</sys_updated_on>
     </sys_script_include>
 </record_update>

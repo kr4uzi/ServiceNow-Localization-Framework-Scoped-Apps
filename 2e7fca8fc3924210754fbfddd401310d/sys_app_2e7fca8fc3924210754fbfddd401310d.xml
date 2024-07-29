@@ -14,9 +14,8 @@
         <license_definition/>
         <license_model>none</license_model>
         <logo>4ce528b7c3d60610754fbfddd4013175</logo>
-        <menu/>
+        <menu display_value="Localization Framework">cfbd7f1873021010395108b24ff6a723</menu>
         <name>Localization Framework+ Scoped Apps</name>
-        <package_json/>
         <private>false</private>
         <restrict_table_access>false</restrict_table_access>
         <runtime_access_tracking>permissive</runtime_access_tracking>
@@ -26,9 +25,6 @@
 - Enables 'Edit Translations' on all (!) Application Files (sys_metadata)&#13;
 - Form Annotation&#13;
 - Tables &amp; Columns&#13;
-&#13;
-Not yet implemented:&#13;
-- Table &amp; Columns not fully integrated to "All-in-One-Translation" via "Edit Translations" on a Application Record (sys_app)&#13;
 - Choices</short_description>
         <source>x_376096_lfp_apps</source>
         <store_correlation_id/>
@@ -39,13 +35,13 @@ Not yet implemented:&#13;
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-25 18:57:36</sys_created_on>
         <sys_id>2e7fca8fc3924210754fbfddd401310d</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>5</sys_mod_count>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-27 19:11:40</sys_updated_on>
+        <sys_updated_on>2024-07-29 00:41:11</sys_updated_on>
         <template/>
         <trackable>true</trackable>
         <uninstall_blocked>false</uninstall_blocked>
-        <user_role/>
+        <user_role display_value="localization_editor" name="localization_editor">f51080e9c3f220107f3a91f58640dd8d</user_role>
         <vendor/>
         <vendor_prefix/>
         <version>1.0.0</version>

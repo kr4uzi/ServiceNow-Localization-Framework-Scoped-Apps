@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?><record_update table="sys_extension_point">
     <sys_extension_point action="INSERT_OR_UPDATE">
         <api_name>x_376096_lfp_apps.LFPChoiceExt</api_name>
-        <description/>
+        <description>This extension point is designed to allow a choice translation to be saved.&#13;
+By default the sys_choice table does not allow scoped writes - as such a global scope implementation is required.</description>
         <example><![CDATA[/* global gs */
 /* global Class, GlideRecord */
 /* eslint no-undef: "error" */
@@ -69,7 +70,7 @@ LFPChoiceExt.prototype = {
 		}
 	},
 
-    type: 'LFPChoiceExt'
+	type: 'LFPChoiceExt'
 };]]></example>
         <name>LFPChoiceExt</name>
         <restrict_scope>false</restrict_scope>
@@ -77,13 +78,13 @@ LFPChoiceExt.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-01 23:02:29</sys_created_on>
         <sys_id>4c790b55c32a0210754fbfddd4013115</sys_id>
-        <sys_mod_count>4</sys_mod_count>
+        <sys_mod_count>5</sys_mod_count>
         <sys_name>LFPChoiceExt</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_extension_point_4c790b55c32a0210754fbfddd4013115</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-02 00:39:23</sys_updated_on>
+        <sys_updated_on>2024-07-29 19:46:10</sys_updated_on>
     </sys_extension_point>
 </record_update>

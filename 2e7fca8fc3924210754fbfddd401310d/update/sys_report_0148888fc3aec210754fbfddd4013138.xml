@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?><record_update table="sys_report">
     <sys_report action="INSERT_OR_UPDATE">
-        <active>true</active>
         <additional_groupby/>
         <aggregate>COUNT</aggregate>
         <aggregation_source>no_override</aggregation_source>
@@ -33,7 +32,7 @@
         <column/>
         <compute_percent>aggregate</compute_percent>
         <content/>
-        <created_by_user display_value="System Administrator">6816f79cc0a8016401c5a33be04be441</created_by_user>
+        <created_by_user display_value="Markus Kraus">6816f79cc0a8016401c5a33be04be441</created_by_user>
         <custom_chart_size>false</custom_chart_size>
         <custom_chart_title_position>false</custom_chart_title_position>
         <custom_config>{"transforms":[{"transform":{"transform":"Reference","name":"chart-subjects"}}]}</custom_config>
@@ -48,7 +47,8 @@
         <exp_report_attrs>true</exp_report_attrs>
         <field>status</field>
         <field_list>document,table_name,language,status,percentage</field_list>
-        <filter table="sn_lf_insight">language.id!=en<item endquery="false" field="language.id" goto="false" newquery="false" operator="!=" or="false" value="en"/>
+        <filter table="sn_lf_insight">language.id!=en^table_name=sys_scope<item endquery="false" field="language.id" goto="false" newquery="false" operator="!=" or="false" value="en"/>
+            <item endquery="false" field="table_name" goto="false" newquery="false" operator="=" or="false" value="sys_scope"/>
         </filter>
         <formatting_configuration>{"table":"incident","stringFormattingProperties":{},"durationFormattingProperties":{},"dateFormattingProperties":{},"numberFormattingProperties":{}}</formatting_configuration>
         <from/>
@@ -73,7 +73,6 @@
         <lower_limit/>
         <map display_value="World">93b8a3a2d7101200bd4a4ebfae61033a</map>
         <map_source/>
-        <no_bulk_migration>false</no_bulk_migration>
         <orderby_list/>
         <other_threshold>-2</other_threshold>
         <others>true</others>
@@ -109,14 +108,14 @@
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-06 19:22:33</sys_created_on>
         <sys_id>0148888fc3aec210754fbfddd4013138</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>4</sys_mod_count>
         <sys_name>App Translations (Scheduled Insights)</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_report_0148888fc3aec210754fbfddd4013138</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-06 19:45:29</sys_updated_on>
+        <sys_updated_on>2024-07-29 15:31:55</sys_updated_on>
         <table>sn_lf_insight</table>
         <title>App Translations (Scheduled Insights)</title>
         <title_horizontal_alignment>center</title_horizontal_alignment>

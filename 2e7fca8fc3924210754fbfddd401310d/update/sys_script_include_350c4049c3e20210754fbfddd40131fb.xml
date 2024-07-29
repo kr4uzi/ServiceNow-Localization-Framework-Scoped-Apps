@@ -5,7 +5,7 @@
         <api_name>x_376096_lfp_apps.AppLocalizationProcessor</api_name>
         <caller_access/>
         <client_callable>false</client_callable>
-        <description>Script that is used while processing or translating an artifact</description>
+        <description>The AppLocalizationProcessor is a convenience wrapper of the MetadataLocalizationProcessor which collects all records of a given scope and bundles them together for a single translation run.</description>
         <name>AppLocalizationProcessor</name>
         <script><![CDATA[/* global gs, global, x_376096_lfp_apps */
 /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
@@ -97,13 +97,13 @@ AppLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProce
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-31 19:12:03</sys_created_on>
         <sys_id>350c4049c3e20210754fbfddd40131fb</sys_id>
-        <sys_mod_count>23</sys_mod_count>
+        <sys_mod_count>25</sys_mod_count>
         <sys_name>AppLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_350c4049c3e20210754fbfddd40131fb</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-01 23:39:35</sys_updated_on>
+        <sys_updated_on>2024-07-29 19:43:12</sys_updated_on>
     </sys_script_include>
 </record_update>

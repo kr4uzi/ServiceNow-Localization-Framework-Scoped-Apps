@@ -13,10 +13,10 @@
         <exclusion_choice_list/>
         <look_up_name/>
         <name>Select App for Live Insights</name>
-        <no_bulk_migration>false</no_bulk_migration>
-        <reference_conditions table="sys_app">active=true<item endquery="false" field="active" goto="false" newquery="false" operator="=" or="false" value="true"/>
+        <reference_conditions table="sys_scope">active=true^private=false<item endquery="false" field="active" goto="false" newquery="false" operator="=" or="false" value="true"/>
+            <item endquery="false" field="private" goto="false" newquery="false" operator="=" or="false" value="false"/>
         </reference_conditions>
-        <reference_table>sys_app</reference_table>
+        <reference_table>sys_scope</reference_table>
         <remove_all_option>true</remove_all_option>
         <source_field/>
         <source_table/>
@@ -24,14 +24,14 @@
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-06 19:30:37</sys_created_on>
         <sys_id>4ef9c843c3eec210754fbfddd40131d4</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>5</sys_mod_count>
         <sys_name>Select App for Live Insights</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_ui_hp_publisher_4ef9c843c3eec210754fbfddd40131d4</sys_update_name>
         <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-06 19:45:01</sys_updated_on>
+        <sys_updated_on>2024-07-29 00:46:04</sys_updated_on>
         <type>2</type>
         <ui_control_type>2</ui_control_type>
         <use_starts_with_on_search_keyword>false</use_starts_with_on_search_keyword>
