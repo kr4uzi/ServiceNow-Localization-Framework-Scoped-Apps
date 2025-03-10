@@ -6,26 +6,27 @@
         <caller_access/>
         <client_callable>false</client_callable>
         <description>Implements extension point x_376096_lfp_apps.LFPChoiceExt</description>
+        <mobile_callable>false</mobile_callable>
         <name>LFPChoiceExt</name>
+        <sandbox_callable>false</sandbox_callable>
         <script><![CDATA[/* global gs */
 /* global Class, GlideRecord, GlideScopedEvaluator */
 /* eslint no-undef: "error" */
 var LFPChoiceExt = Class.create();
 LFPChoiceExt.prototype = {
 	initialize: function() {
-		const scriptGr = new GlideRecord('sys_rte_eb_script_operation');
-		scriptGr.addQuery('sys_id', '80e292c3c3d24210754fbfddd40131f2');
+		const scriptGr = new GlideRecord('clone_cleanup_script');
+		scriptGr.addQuery('sys_scope', 'global');
 		scriptGr.setLimit(1);
 		scriptGr.query();
 		if (scriptGr.next()) {
 			this.scriptGr = scriptGr;
 		} else {
-			throw new Error(this.type + ' does not function without script injection');
+			throw new Error(this.type + ' does not function without an infusable script record');
 		}
 	},
 
 	createOrUpdateChoice: function (table, element, dependentValue, value, language, valueMap) {
-		this.scriptGr.sys_scope = 'global';
 		this.scriptGr.script = `
 			(function (table, element, dependentValue, value, language, valueMap) {
 				var choiceGr = new GlideRecord('sys_choice');
@@ -96,13 +97,13 @@ LFPChoiceExt.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-01 23:04:26</sys_created_on>
         <sys_id>3e1b4395c32a0210754fbfddd4013196</sys_id>
-        <sys_mod_count>15</sys_mod_count>
+        <sys_mod_count>17</sys_mod_count>
         <sys_name>LFPChoiceExt</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_3e1b4395c32a0210754fbfddd4013196</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-02 00:37:21</sys_updated_on>
+        <sys_updated_by>kr4uzi@gmail.com</sys_updated_by>
+        <sys_updated_on>2025-03-10 12:03:04</sys_updated_on>
     </sys_script_include>
 </record_update>

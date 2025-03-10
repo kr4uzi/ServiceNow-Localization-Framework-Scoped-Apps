@@ -18,7 +18,9 @@ In addition, there are several records which are Application Files themselves bu
 - UI Sections: Section Captions and Annotations&#13;
 - Choice Set: Choices (with dependent value)&#13;
 - Tables and Columns: The label for tables doesn't actually reside on table/column record and needs special handling</description>
+        <mobile_callable>false</mobile_callable>
         <name>MetadataLocalizationProcessor</name>
+        <sandbox_callable>false</sandbox_callable>
         <script><![CDATA[/* global gs, global, sn_scoped_cache, x_376096_lfp_apps */
 /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
 /* eslint no-undef: "error" */
@@ -344,6 +346,12 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 			}
 
 			const source = translatedValues[builder.sourceLanguage];
+			if (!source) {
+				// no documentation record exists, this regularly happens for ui-builder components,
+				// but I still have to figure out under what exact circumstances
+				return;
+			}
+
 			const target = translatedValues[builder.targetLanguage];
 
 			// For custom tables, the sys-columns are created without a sys_name (display column for sys_metadata).
@@ -667,13 +675,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>156</sys_mod_count>
+        <sys_mod_count>161</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-07-29 21:53:50</sys_updated_on>
+        <sys_updated_by>kr4uzi@gmail.com</sys_updated_by>
+        <sys_updated_on>2025-03-10 14:28:32</sys_updated_on>
     </sys_script_include>
 </record_update>

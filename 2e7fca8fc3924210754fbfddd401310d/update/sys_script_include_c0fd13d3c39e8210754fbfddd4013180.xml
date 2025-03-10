@@ -6,36 +6,41 @@
         <caller_access/>
         <client_callable>false</client_callable>
         <description>Implements extension point x_376096_lfp_apps.LFPMetadataExt</description>
+        <mobile_callable>false</mobile_callable>
         <name>LFPMetadataExt</name>
-        <script><![CDATA[/* global Class, GlideRecord, GlideScopedEvaluator */
+        <sandbox_callable>false</sandbox_callable>
+        <script><![CDATA[/* global Set, Class, GlideRecord, GlideScopedEvaluator */
 /* eslint no-undef: "error" */
 var LFPMetadataExt = Class.create();
 LFPMetadataExt.prototype = {
     initialize: function() {
-		const scriptGr = new GlideRecord('sys_rte_eb_script_operation');
-		scriptGr.addQuery('sys_id', '80e292c3c3d24210754fbfddd40131f2');
+		const scriptGr = new GlideRecord('clone_cleanup_script');
+		scriptGr.addQuery('sys_scope', 'global');
 		scriptGr.setLimit(1);
 		scriptGr.query();
 		if (scriptGr.next()) {
 			this.scriptGr = scriptGr;
 		} else {
-			throw new Error(this.type + ' does not function without script injection');
+			throw new Error(this.type + ' does not function without an infusable script record');
 		}
 
-		this._tableCache = {};
+		this._tableCache = new Set();
     },
 
     handlesTable: function (table) {
-		if (table in this._tableCache) {
+		if (this._tableCache.has(table)) {
 			return true;
 		}
-
+		
 		const dbObjectGr = new GlideRecord('sys_db_object');
 		dbObjectGr.addQuery('name', table);
+		dbObjectGr.addQuery('access', '')
+			.addOrCondition('access', 'public')
+			.addOrCondition('read_access', 'true');
 		dbObjectGr.setLimit(1);
 		dbObjectGr.query();
-		if (dbObjectGr.next()) {
-			this._tableCache[table] = dbObjectGr.getValue('sys_scope');
+		if (dbObjectGr.hasNext()) {
+			this._tableCache.add(table);
 			return true;
 		}
 
@@ -43,7 +48,6 @@ LFPMetadataExt.prototype = {
 	},
 
 	getFieldValues: function (table, sysId, fields) {
-		this.scriptGr.sys_scope = this._tableCache[table];
 		this.scriptGr.script = `
 			(function (table, sysId, fields) {
 
@@ -76,13 +80,13 @@ LFPMetadataExt.prototype = {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-26 19:18:53</sys_created_on>
         <sys_id>c0fd13d3c39e8210754fbfddd4013180</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>5</sys_mod_count>
         <sys_name>LFPMetadataExt</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_c0fd13d3c39e8210754fbfddd4013180</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-05-27 19:50:28</sys_updated_on>
+        <sys_updated_by>kr4uzi@gmail.com</sys_updated_by>
+        <sys_updated_on>2025-03-10 12:03:14</sys_updated_on>
     </sys_script_include>
 </record_update>
