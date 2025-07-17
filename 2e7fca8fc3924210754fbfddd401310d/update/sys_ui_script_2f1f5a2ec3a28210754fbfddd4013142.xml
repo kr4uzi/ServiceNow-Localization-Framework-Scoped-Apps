@@ -3,76 +3,68 @@
         <active>true</active>
         <description>Adds the following features to the Localization Framework Editor:&#13;
 - Notify the user if the shown message is taken from another scope. This is intended to prevent developers form changing translations that are not stored in the current application.&#13;
-- Fixes the height issue where out-of-the-box you cannot properly read fields longer than 5 lines</description>
+- Fixes the height issue where out-of-the-box you cannot properly read fields longer than 5 lines&#13;
+- Shows a "Translate (deepl)" button if enabled in the Localization Framework's settings</description>
         <global>true</global>
         <ignore_in_now_experience>false</ignore_in_now_experience>
         <name>x_376096_lfp_apps.lf_ui_addons</name>
         <script><![CDATA[var x_376096_lfp_apps = x_376096_lfp_apps || {};
-x_376096_lfp_apps.lf_ui_addons = (function () { 
+x_376096_lfp_apps.lf_ui_addons = (function () {
 	"use strict";
-	/* global setTimeout, Text */
+	/* global window, console, location, angular, setTimeout, setInterval, clearTimeout, clearInterval, MutationObserver, IntersectionObserver, Promise, Text */
+	/* global GlideAjax */
 	/* eslint no-undef: "error" */
 	if (x_376096_lfp_apps.lf_ui_addons) {
 		return x_376096_lfp_apps.lf_ui_addons;
 	}
-	
-	setTimeout(function () {
-		const $window = this;
-		const observer = new $window.MutationObserver(function (mutations) {
-			for (let i = 0; i < mutations.length; i++) {
-				const mutation = mutations[i];
-				if (mutation.addedNodes) {
-					for (let j = 0; j < mutation.addedNodes.length; j++) {
-						const node = mutation.addedNodes[j];
-						if (node.getAttribute && node.getAttribute('ng-app') == 'LFComparisonUI') {
-							new LFUIAddons($window, node);
-							return;
-						}
-					}
-				}
-			} 
-		});
 
-		observer.observe($window.document, {
-			childList: true,
-			subtree: true
-		});
-	}); 
-	
-	return { 
+	if (location.pathname.includes('sn_lf_comparison_ui')) {
+		(async () => {
+			try {
+				const $window = await getWindow();
+				// the first ng-app present in the DOM is not the one used by angular (angular rendering process replaces it with initially cloaked one)
+				const ngApp = await waitDOMElement($window.document, '.ng-cloak[ng-app="LFComparisonUI"]');
+				const appScope = await waitScope(ngApp);
+				await Promise.all([fixLongUIMessageCutOff(ngApp), showCrossScopeErrors(appScope), addDeeplTranslationButton(ngApp, appScope)]);
+			} catch (e) {
+				console.error('LFP error: ' + e, e);
+			}
+		})();
+	}
+
+	return {
 		type: 'lf_ui_addons'
 	};
 
-	function LFUIAddons($window, node) {
-		const $element = $window.angular.element(node);
-		const $scope = $element.scope();
-		if (!$scope) {
-			$window.setTimeout(function () {
-				new LFUIAddons($window, node);
-			}, 100);
-			return;
-		}
-		
-		$window.addAfterPageLoadedEvent(function () {
-			$window.document.querySelectorAll('.readonly-html-field').forEach(node => {
-				if (node.firstChild instanceof Text) {
-					node.style.display = 'inline-block';
-					const range = $window.document.createRange();
-					range.selectNodeContents(node.firstChild);
+	async function fixLongUIMessageCutOff(root) {
+		const $window = (root.ownerDocument || root).defaultView;
+		const container = await waitDOMElement(root, '[ng-repeat*="groupedItemsToTranslate"]');
+		// only after the container is visible, we get the actual heights
+		await waitVisible(container);
+		container.querySelectorAll('.readonly-html-field').forEach(node => {
+			if (node.firstChild instanceof Text) {
+				const nodeStyles = $window.getComputedStyle(node);
+				const range = $window.document.createRange();
+				range.selectNodeContents(node.firstChild);
+				const expectedHeight = range.getBoundingClientRect().height + parseFloat(nodeStyles.marginBottom);
+				const actualHeight = parseFloat(nodeStyles.height);
+				if (actualHeight < expectedHeight) {
+					node.style.height = expectedHeight + 'px';
 
-					const rect = range.getBoundingClientRect();
-					const height = rect.bottom - rect.top;
-
-					if (height > 48) {
-						node.style.height = height.toFixed(0) + 'px';
+					const translationNode = node.closest('td')?.parentElement?.querySelector('#translated-value-column').querySelector('textarea');
+					if (translationNode.getBoundingClientRect().height < expectedHeight) {
+						translationNode.style.height = expectedHeight + 'px';
 					}
 				}
-			});
+			}
 		});
+	}
 
-		//const LF_DELIMITER = "_lf_";
+	async function showCrossScopeErrors($scope) {
+		const config = await getConfig();
 		const artifactName = $scope.artifactInternalName;
 		if (artifactName.startsWith('lfp_apps_')) {
+			// the cross scope error is set via 'lfp_apps_cross_scope_violated' which is generated only by the lfp_apps processor
 			for (const [itemName, itemContent] of Object.entries($scope.groupedItemsToTranslate)) {
 				let itemHasError = false;
 				for (const [groupName, content] of Object.entries(itemContent.documentContent)) {
@@ -80,7 +72,7 @@ x_376096_lfp_apps.lf_ui_addons = (function () {
 						for (const [fieldInfoIdx, fieldInfoElement] of Object.entries(contentElement.fieldInfo)) {
 							const translationErrorKey = $scope.getTranslationErrorsKey(contentElement.fieldInfo.length, groupName, contentElement.label, fieldInfoIdx, contentElement.id);
 							if (fieldInfoElement.additionalParameters?.lfp_apps_cross_scope_violated) {
-								($scope.translationErrors[itemName]??= {})[translationErrorKey] = 'Translated in ' + fieldInfoElement.additionalParameters.lfp_apps_cross_scope_violated;
+								($scope.translationErrors[itemName] ??= {})[translationErrorKey] = config.messages.translated_in_scope + ' ' + fieldInfoElement.additionalParameters.lfp_apps_cross_scope_violated;
 								itemHasError = true;
 							}
 						}
@@ -88,10 +80,192 @@ x_376096_lfp_apps.lf_ui_addons = (function () {
 				}
 
 				if (itemHasError) {
-					$scope.$evalAsync(_ => itemContent.error = true);
+					$scope.$evalAsync(() => itemContent.error = true);
 				}
 			}
 		}
+	}
+
+	async function addDeeplTranslationButton(root, $scope) {
+		const config = await getConfig();
+		if (!config.deepl_button.show) {
+			return;
+		}
+
+		const $window = (root.ownerDocument || root).defaultView;
+		const publishButton = await waitDOMElement(root, 'button[ng-show*="publishTranslation"]');
+		const deeplTranslate = $window.document.createElement('button');
+		deeplTranslate.textContent = config.deepl_button.label;
+		deeplTranslate.classList.add('btn', 'btn-header', 'btn-default');
+		deeplTranslate.addEventListener('click', async (event) => {
+			event.preventDefault();
+
+			for (const [itemName, itemContent] of Object.entries($scope.groupedItemsToTranslate)) {
+				let itemHasError = false;
+				for (const [groupName, content] of Object.entries(itemContent.documentContent)) {
+					for (const [contentElementIdx, contentElement] of Object.entries(content)) {
+						for (const [fieldInfoIdx, fieldInfoElement] of Object.entries(contentElement.fieldInfo)) {
+							if (fieldInfoElement.isFieldLocked || fieldInfoElement.translatedValue) {
+								continue;
+							}
+
+							const res = await LFPGlideAjax('x_376096_lfp_apps.UIUtilClient', 'translate', {
+								message: fieldInfoElement.originalValue,
+								language: $scope.targetLanguage,
+								context: ''
+							});
+
+							$scope.$evalAsync(() => fieldInfoElement.translatedValue = res.translated_message);
+						}
+					}
+				}
+			}
+			// LFPGlideAjax			
+		});
+		publishButton.parentNode.insertBefore(deeplTranslate, publishButton);
+	}
+
+	async function waitDOMElement(root, selector, { timeout = 10000, observerOptions = { childList: true, subtree: true } } = {}) {
+		const node = root.querySelector(selector);
+		if (node) {
+			return node;
+		}
+
+		return new Promise((resolve, reject) => {
+			let timeoutId = null;
+			let observer = new MutationObserver((mutations) => {
+				for (let i = 0; i < mutations.length; i++) {
+					const mutation = mutations[i];
+					for (let j = 0; j < mutation?.addedNodes.length; j++) {
+						const node = mutation.addedNodes[j];
+						if (node.matches?.(selector)) {
+							clearTimeout(timeoutId);
+							resolve(node);
+							observer.disconnect();
+							return;
+						}
+					}
+				}
+			});
+
+			observer.observe(root, observerOptions);
+			timeoutId = setTimeout(() => {
+				observer.disconnect();
+
+				const node = root.querySelector(selector);
+				if (node) {
+					resolve(node);
+				} else {
+					reject('waitDOMElement timed out after ' + timeout + 'ms');
+				}
+			}, timeout);
+		});
+	}
+
+	async function waitVisible(node, timeout = 10000) {
+		if (node.checkVisibility()) {
+			return node;
+		}
+
+		return new Promise((resolve, reject) => {
+			let timeoutId = null;
+			const observer = new IntersectionObserver((entries) => {
+				for (const entry of entries) {
+					if (entry.isIntersecting) {
+						clearTimeout(timeoutId);
+						observer.disconnect();
+						resolve(node);
+						return;
+					}
+				}
+			});
+
+			observer.observe(node);
+			timeoutId = setTimeout(() => {
+				observer.disconnect();
+				reject('waitVisible timed out after ' + timeout + 'ms');
+			}, timeout);
+		});
+	}
+
+	async function waitScope(node, timeout = 10000) {
+		if (node.classList.contains('ng-scope')) {
+			return node;
+		}
+
+		return new Promise((resolve, reject) => {
+			let timeoutId = null;
+			const observer = new MutationObserver(() => {
+				if (node.classList.contains('ng-scope')) {
+					clearTimeout(timeoutId);
+					observer.disconnect();
+
+					const $angular = (typeof angular !== 'undefined' && angular) || node.ownerDocument?.defaultView?.angular;
+					if (!$angular) {
+						throw new Error('AngularJS not available');
+					}
+
+					resolve($angular.element(node).scope());
+					return;
+				}
+			});
+			observer.observe(node, { attributeFilter: ['class'] });
+
+			timeoutId = setTimeout(() => {
+				observer.disconnect();
+				reject('waitScope timed out after ' + timeout + 'ms');
+			}, timeout);
+		});
+	}
+
+	async function getWindow() {
+		if (typeof window !== 'undefined' && window) {
+			return window;
+		}
+
+		return new Promise((resolve) => setTimeout(resolve));
+	}
+
+	async function LFPGlideAjax(siName, fnName, params, timeout = 10000) {
+		return new Promise((resolve, reject) => {
+			const ga = new GlideAjax(siName).setScope('x_376096_lfp_apps');
+			ga.addParam('sysparm_name', fnName);
+			for (const [param, value] of Object.entries(params || {})) {
+				ga.addParam(param, value);
+			}
+
+			let timeoutId = null;
+			let requestCancelled = false;
+			ga.getXMLAnswer(function (result) {
+				if (requestCancelled) {
+					return;
+				}
+				
+				clearTimeout(timeoutId);
+				try {
+					result = JSON.parse(result);
+					if (result.status == 'success') {
+						resolve(result);
+					} else if (result.message) {
+						throw new Error(result.message);
+					} else {
+						throw new Error('(empty status or result)\n' + result);
+					}
+				} catch (e) {
+					reject(e);
+				}
+			});
+
+			timeoutId = setTimeout(() => {
+				// there is no ga.cancel so we use a variable instead
+				requestCancelled = true;
+				reject('LFPGlideAjax timed out after ' + timeout + 'ms');
+			}, timeout);
+		});
+	}
+
+	async function getConfig() {
+		return getConfig.__shared_promise__ ??= LFPGlideAjax('x_376096_lfp_apps.UIUtilClient', 'getConfig');
 	}
 })();]]></script>
         <script_name>lf_ui_addons</script_name>
@@ -99,14 +273,14 @@ x_376096_lfp_apps.lf_ui_addons = (function () {
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-06-05 17:07:17</sys_created_on>
         <sys_id>2f1f5a2ec3a28210754fbfddd4013142</sys_id>
-        <sys_mod_count>34</sys_mod_count>
+        <sys_mod_count>330</sys_mod_count>
         <sys_name>x_376096_lfp_apps.lf_ui_addons</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_ui_script_2f1f5a2ec3a28210754fbfddd4013142</sys_update_name>
-        <sys_updated_by>kr4uzi@gmail.com</sys_updated_by>
-        <sys_updated_on>2025-03-10 15:27:48</sys_updated_on>
+        <sys_updated_by>markus.kraus@intrux.ch</sys_updated_by>
+        <sys_updated_on>2025-07-17 18:06:48</sys_updated_on>
         <ui_type>0</ui_type>
         <use_scoped_format>true</use_scoped_format>
     </sys_ui_script>

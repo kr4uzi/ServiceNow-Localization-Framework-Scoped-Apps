@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_376096_lfp_apps.UIUtilClient</api_name>
+        <caller_access/>
+        <client_callable>true</client_callable>
+        <description/>
+        <mobile_callable>false</mobile_callable>
+        <name>UIUtilClient</name>
+        <sandbox_callable>true</sandbox_callable>
+        <script><![CDATA[/* global global, gs, sn_cc, sn_ws */
+/* global Class, GlideRecordSecure */
+/* eslint no-undef: "error" */
+var UIUtilClient = Class.create();
+UIUtilClient.prototype = Object.extendsObject(global.AbstractAjaxProcessor, {
+	initialize: function () {
+		global.AbstractAjaxProcessor.prototype.initialize.apply(this, arguments);
+		this.credential_alias = 'dcba6b41c3b26210de14d8477d0131fb';
+	},
+
+	getConfig: function () {
+		try {
+			return JSON.stringify({
+				status: 'success',
+				deepl_button: {
+					show: !!new sn_cc
+						.StandardCredentialsProvider()
+						.getCredentialByAliasID(this.credential_alias)
+						?.getAttribute('api_key'),
+					label: gs.getMessage('Translate') + ' (deepl)'
+				},
+				messages: {
+					translated_in_scope: gs.getMessage('lfp_translated_in_scope')
+				}
+			});
+		} catch (e) {
+			const message = `failed to generate config ${e}:\n${e.stack}`;
+			gs.debug(message);
+			return {
+				result: 'error',
+				message: e
+			};
+		}
+	},
+
+
+	translate: function () {
+		const result = {
+			status: 'error',
+			message: ''
+		};
+		
+		const message = this.getParameter('message');
+		const language = this.getParameter('language');
+		const context = this.getParameter('context');
+		if (!message && !language) {
+			result.message = gs.getMessage('lfp_invalid_parameters');
+			return result;
+		}
+		
+		const translatedGr = new GlideRecordSecure('sys_translated');
+		translatedGr.addQuery('value', message);
+		translatedGr.addQuery('language', language);
+		translatedGr.setLimit(1);
+		translatedGr.query();
+		if (translatedGr.next()) {
+			result.translated_message = translatedGr.label.toString();
+			result.status = 'success';
+			return JSON.stringify(result);
+		}
+		
+		const uiMessageGr = new GlideRecordSecure('sys_ui_message');
+		uiMessageGr.addQuery('key', message);
+		uiMessageGr.addQuery('language', language);
+		uiMessageGr.setLimit(1);
+		uiMessageGr.query();
+		if (uiMessageGr.next()) {
+			result.translated_message = uiMessageGr.message.toString();
+			result.status = 'success';
+			return JSON.stringify(result);
+		}
+		
+		const choiceGr = new GlideRecordSecure('sys_choice');
+		choiceGr.addQuery('label', message);
+		choiceGr.addQuery('language', language);
+		choiceGr.setLimit(1);
+		choiceGr.query();
+		if (choiceGr.next()) {
+			result.translated_message = choiceGr.label.toString();
+			result.status = 'success';
+			return JSON.stringify(result);
+		}
+		
+		const docGr = new GlideRecordSecure('sys_documentation');
+		docGr.addQuery('label', message);
+		docGr.addQuery('language', language);
+		docGr.setLimit(1);
+		docGr.query();
+		if (docGr.next()) {
+			result.translated_message = docGr.label.toString();
+			result.status = 'success';
+			return JSON.stringify(result);
+		}
+		
+		const deeplResult = this._translateDeepl(language, message, context);
+		if (deeplResult.status == 'success') {
+			result.status = 'success';
+			result.translated_message = deeplResult.text;
+		} else {
+			result.message = deeplResult.message;
+		}
+		
+		return JSON.stringify(result);
+	},
+
+	_translateDeepl: function (language, message, sourceLang, context) {
+		const result = {
+			status: 'error',
+			message: ''
+		};
+
+		const credentials = new sn_cc.StandardCredentialsProvider().getCredentialByAliasID(this.credential_alias);
+		if (!credentials) {
+			result.message = gs.getMessage('lfp_deepl_invalid_credential_alias');
+			return result;
+		}
+		
+		const apiKey = credentials.getAttribute('api_key');
+		if (!apiKey) {
+			result.message = gs.getMessage('lfp_deepl_invalid_api_key');
+			return result;
+		}
+
+		const request = new sn_ws.RESTMessageV2();
+		request.setHttpMethod('post');
+		request.setEndpoint('https://api-free.deepl.com/v2/translate');
+		request.setRequestHeader('Content-Type', 'Application/json');
+		request.setRequestHeader('Accept', 'Application/json');
+		request.setRequestHeader('Authorization', 'DeepL-Auth-Key ' + apiKey);
+		const data = {
+			'target_lang': language,
+			'text': [message],
+			'source_lang': sourceLang
+		};
+		if (context) {
+			data.context = context;
+		}
+		request.setRequestBody(JSON.stringify(data));
+
+		const response = request.execute();
+		const body = response.getBody();
+		if (response.haveError()) {
+			result.message = response.getErrorMessage();
+			gs.debug('deepl API failed: ' + result.message + '\n' + body);
+			return result;
+		}
+		
+		try {
+			const translation = JSON.parse(body).translations[0];
+			result.sourceLanguage = translation.detected_source_language;
+			result.text = translation.text;
+			result.status = 'success';
+		} catch (e) {
+			result.message = 'Failed to parse deepl result: ' + e;
+			gs.debug('deepl API failed: ' + result.message + '\n' + body);
+		}
+			
+        return result;
+	},
+
+	type: 'UIUtilClient'
+});]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>markus.kraus@intrux.ch</sys_created_by>
+        <sys_created_on>2025-07-16 09:35:35</sys_created_on>
+        <sys_id>ec8b6781c3b26210de14d8477d013133</sys_id>
+        <sys_mod_count>18</sys_mod_count>
+        <sys_name>UIUtilClient</sys_name>
+        <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
+        <sys_update_name>sys_script_include_ec8b6781c3b26210de14d8477d013133</sys_update_name>
+        <sys_updated_by>markus.kraus@intrux.ch</sys_updated_by>
+        <sys_updated_on>2025-07-17 18:09:22</sys_updated_on>
+    </sys_script_include>
+</record_update>

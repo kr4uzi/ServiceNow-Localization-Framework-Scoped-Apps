@@ -319,6 +319,14 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
 		recordGr.setLimit(1);
 		recordGr.query();
 		if (recordGr.next()) {
+			if (!isTable && params.lfp_context?.tableName == 'sys_app' && !recordGr.element) {
+				// use-case: table-label
+				// - translated via sys_db_object
+				// - translated via sys_dictionary "collection" record
+				// => because both are a duplicate, we skip the null/collection dictionary record
+				return;
+			}
+
 			const optionalFields = ['help', 'hint', 'url', 'url_target'];
 			const fields = ['label', 'plural'].concat(optionalFields);
 			const translatedValues = {};
@@ -675,13 +683,13 @@ MetadataLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifact
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-27 17:55:58</sys_created_on>
         <sys_id>feb8b32fc3d20610754fbfddd4013118</sys_id>
-        <sys_mod_count>161</sys_mod_count>
+        <sys_mod_count>165</sys_mod_count>
         <sys_name>MetadataLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_feb8b32fc3d20610754fbfddd4013118</sys_update_name>
-        <sys_updated_by>kr4uzi@gmail.com</sys_updated_by>
-        <sys_updated_on>2025-03-10 14:28:32</sys_updated_on>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-07-15 18:13:35</sys_updated_on>
     </sys_script_include>
 </record_update>

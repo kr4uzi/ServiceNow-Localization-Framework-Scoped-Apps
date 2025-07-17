@@ -6,7 +6,9 @@
         <caller_access/>
         <client_callable>false</client_callable>
         <description>The AppLocalizationProcessor is a convenience wrapper of the MetadataLocalizationProcessor which collects all records of a given scope and bundles them together for a single translation run.</description>
+        <mobile_callable>false</mobile_callable>
         <name>AppLocalizationProcessor</name>
+        <sandbox_callable>false</sandbox_callable>
         <script><![CDATA[/* global gs, global, x_376096_lfp_apps */
 /* global Class, GlideAggregate, GlideRecord, GlideTableHierarchy, GlideScriptedExtensionPoint, Set */
 /* eslint no-undef: "error" */
@@ -33,6 +35,7 @@ AppLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProce
 			metadataGr.query();
 			while (metadataGr.next()) {
 				const metadataParams = JSON.parse(JSON.stringify(params));
+				metadataParams.lfp_context = params;
 				metadataParams.scope = params.sysId;
 				metadataParams.sysId = metadataGr.getUniqueValue();
 				metadataParams.tableName = metadataGr.getValue('sys_class_name');
@@ -97,13 +100,13 @@ AppLocalizationProcessor.prototype = Object.extendsObject(global.LFArtifactProce
         <sys_created_by>markus.kraus</sys_created_by>
         <sys_created_on>2024-05-31 19:12:03</sys_created_on>
         <sys_id>350c4049c3e20210754fbfddd40131fb</sys_id>
-        <sys_mod_count>25</sys_mod_count>
+        <sys_mod_count>29</sys_mod_count>
         <sys_name>AppLocalizationProcessor</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_include_350c4049c3e20210754fbfddd40131fb</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-07-29 19:43:12</sys_updated_on>
+        <sys_updated_by>admin</sys_updated_by>
+        <sys_updated_on>2025-07-15 18:30:26</sys_updated_on>
     </sys_script_include>
 </record_update>
