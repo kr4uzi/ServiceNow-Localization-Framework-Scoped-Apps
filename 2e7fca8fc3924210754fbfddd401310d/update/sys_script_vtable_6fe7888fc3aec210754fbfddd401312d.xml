@@ -2,11 +2,18 @@
     <sys_script_vtable action="INSERT_OR_UPDATE">
         <active>true</active>
         <advanced>true</advanced>
-        <cache_isolation_level>USER</cache_isolation_level>
+        <cache_isolation_level>SYSTEM</cache_isolation_level>
         <cache_strategy>CACHE_BY_QUERY</cache_strategy>
         <cache_ttl>300</cache_ttl>
+        <delete_script><![CDATA[(function executeDelete(v_record) {     // Parameters:     //      v_record - a map of field names and values containing (among others) the     //              sys_id of the record that needs to be deleted on the remote system     //          v_record.<field_name>                  - fields in the remote table GlideRecord     //          v_record.setLastErrorMessage(message)   - signal an error      // Sample code:     //  try {     //      update-external-system;     //      if (there-was-an-error) {     //          var message = ...;     //          v_record.setLastErrorMessage(message);     //      }     //  } catch (ex) {     //      var message = ex.getMessage();     //      v_record.setLastErrorMessage(message);     //  }  })(v_record);]]></delete_script>
+        <editable>false</editable>
+        <enhanced_capacity>true</enhanced_capacity>
+        <flow/>
+        <insert_script><![CDATA[(function executeInsert(v_record) {     // Parameters:     //      v_record is a map of field names and values containing the sys_id of the     //              record and the fields that need to be inserted in the record on the     //              remote system (source of data)          //          v_record.<field_name>                   - fields in the remote table GlideRecord     //          v_record.setLastErrorMessage(message)   - signal an error      // Sample code:     //  try {     //      update-external-system;     //      if (there-was-an-error) {     //          var message = ...;     //          v_record.setLastErrorMessage(message);     //      }     //  } catch (ex) {     //      var message = ex.getMessage();     //      v_record.setLastErrorMessage(message);     //  }  })(v_record);]]></insert_script>
         <name>LF+ Scoped Apps - Metadata Insight</name>
         <script><![CDATA[(function executeQuery(v_table, v_query) {
+
+	// insight generation 
 
 	// extract and transform the encoded query which is relevant for the sys_metadata query
 	const metadataQuery = v_query.getEncodedQuery().split('^NQ').map(nq => nq.split('^OR').map(or => or.split(/\^(?!\^)/).map(query => {
@@ -70,14 +77,15 @@
         <sys_domain>global</sys_domain>
         <sys_domain_path>/</sys_domain_path>
         <sys_id>6fe7888fc3aec210754fbfddd401312d</sys_id>
-        <sys_mod_count>5</sys_mod_count>
+        <sys_mod_count>7</sys_mod_count>
         <sys_name>LF+ Scoped Apps - Metadata Insight</sys_name>
         <sys_package display_value="Localization Framework+ Scoped Apps" source="x_376096_lfp_apps">2e7fca8fc3924210754fbfddd401310d</sys_package>
         <sys_policy/>
         <sys_scope display_value="Localization Framework+ Scoped Apps">2e7fca8fc3924210754fbfddd401310d</sys_scope>
         <sys_update_name>sys_script_vtable_6fe7888fc3aec210754fbfddd401312d</sys_update_name>
-        <sys_updated_by>markus.kraus</sys_updated_by>
-        <sys_updated_on>2024-06-06 19:56:34</sys_updated_on>
+        <sys_updated_by>markus.kraus@intrux.ch</sys_updated_by>
+        <sys_updated_on>2025-07-17 19:55:47</sys_updated_on>
         <table>x_376096_lfp_apps_st_metadata_insight</table>
+        <update_script><![CDATA[(function executeUpdate(v_record, v_changed_fields) {     // Parameters:     //    v_record - a map of field names and values containing the sys_id of the record     //          v_record.<field_name>                   - fields in the remote table GlideRecord     //          v_record.setLastErrorMessage(message)   - signal an error     //    v_changed_fields - a map of field names and values containing the sys_id of the     //          v_changed_fields.<field_name>           - changed fields in the remote table GlideRecord      // Sample code:     //  try {     //      update-external-system;     //      if (there-was-an-error) {     //          var message = ...;     //          v_record.setLastErrorMessage(message);     //      }     //  } catch (ex) {     //      var message = ex.getMessage();     //      v_record.setLastErrorMessage(message);     //  }  })(v_record, v_changed_fields);]]></update_script>
     </sys_script_vtable>
 </record_update>
